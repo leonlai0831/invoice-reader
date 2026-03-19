@@ -86,7 +86,7 @@
 [data-theme="light"] .branch-hint-popover { background: #ffffff; border-color: rgba(79,70,229,.2); box-shadow: 0 8px 32px rgba(0,0,0,.12); }
 [data-theme="light"] #filter-branch-btn { background: rgba(255,255,255,.85); }
 [data-theme="light"] #filter-branch-dropdown { background: #ffffff; border-color: rgba(79,70,229,.2); box-shadow: 0 8px 32px rgba(0,0,0,.12); }
-[data-theme="light"] tr:hover td { background: rgba(0,0,0,.02) !important; }
+[data-theme="light"] tr:hover td { background: rgba(0,0,0,.04) !important; }
 [data-theme="light"] ::-webkit-scrollbar-thumb { background: rgba(0,0,0,.1); }
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,.2); }
 [data-theme="light"] .btn-ghost { background: rgba(0,0,0,.04); }
@@ -175,7 +175,7 @@ button {
 @keyframes toastProgress { from { width:100% } to { width:0% } }
 @keyframes flashRed { 0%,100%{background:transparent} 50%{background:var(--danger-08)} }
 
-tr:hover td { background: rgba(255,255,255,.02) !important }
+tr:hover td { background: rgba(255,255,255,.04) !important }
 
 /* Zebra striping */
 #tbody tr:nth-child(even) td,
