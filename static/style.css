@@ -306,7 +306,7 @@ tr:hover td { background: rgba(255,255,255,.02) !important }
   border-color: var(--danger-28);
 }
 
-.btn-sm { padding: 6px 13px; font-size: 12px }
+.btn-sm { padding: 8px 13px; font-size: 12px; min-height: 36px }
 .btn:disabled { opacity: .35; cursor: not-allowed; transform: none !important; filter: none !important }
 
 /* ── Tabs ───────────────────────────────────────────────────── */
@@ -322,7 +322,7 @@ tr:hover td { background: rgba(255,255,255,.02) !important }
 }
 
 .tab {
-  padding: 8px 22px;
+  padding: 10px 22px;
   border-radius: 8px;
   border: none;
   font-size: 13px;
@@ -1330,7 +1330,9 @@ tr.row-selected td { background: rgba(99,102,241,.04) !important }
 #theme-toggle {
   font-size: 16px;
   line-height: 1;
-  padding: 4px 8px;
+  padding: 8px 10px;
+  min-height: 36px;
+  min-width: 36px;
   border-radius: 6px;
   cursor: pointer;
   background: transparent;
