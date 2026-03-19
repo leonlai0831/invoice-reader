@@ -428,25 +428,45 @@ export async function deleteLedgerTxnAction(txnId: string): Promise<void> {
 
 // ── Auto-link ───────────────────────────────────────────────────
 
-function getHistoricalRate(monthKey: string): number {
-  const pairs: number[] = [];
-  for (const wx of state.ccLedgerWX) {
-    if (!wx.crossRefId || !wx.crossRefRate) continue;
-    const mk = (wx.dateISO || '').slice(0, 7);
-    if (mk === monthKey) pairs.push(wx.crossRefRate);
-  }
-  if (pairs.length >= 1) return pairs.reduce((s, r) => s + r, 0) / pairs.length;
-  const allRates = state.ccLedgerWX.filter(t => t.crossRefId && t.crossRefRate).map(t => t.crossRefRate!);
-  if (allRates.length >= 1) return allRates.reduce((s, r) => s + r, 0) / allRates.length;
-  return state.rates.CNY || 0.62;
+async function fetchHistoricalRates(dates: string[]): Promise<Record<string, number>> {
+  if (!dates.length) return {};
+  const sorted = [...dates].sort();
+  try {
+    const d = await api.getHistoricalRates(sorted[0], sorted[sorted.length - 1]);
+    return (d.ok && d.rates) ? d.rates : {};
+  } catch { return {}; }
 }
 
-export function autoLinkWxCc(): void {
+function lookupDailyRate(historicalRates: Record<string, number>, dateISO: string): number | null {
+  if (historicalRates[dateISO]) return historicalRates[dateISO];
+  const allDates = Object.keys(historicalRates).sort();
+  let best: string | null = null;
+  for (const d of allDates) {
+    if (d <= dateISO) best = d;
+    else break;
+  }
+  return best ? historicalRates[best] : null;
+}
+
+export async function autoLinkWxCc(): Promise<void> {
   const MAX_DAY_DIFF = 2;
-  const RATE_TOLERANCE = 0.02;
+  const RATE_TOLERANCE_UP = 0.02;
+  const RATE_TOLERANCE_DOWN = 0.01;
   const unlinkedWx = state.ccLedgerWX.filter(t => !t.crossRefId);
   const unlinkedCc = state.ccLedgerCC.filter(t => !t.crossRefId && isWechatRelated(t.description));
   if (!unlinkedWx.length || !unlinkedCc.length) { showToast('没有可匹配的未关联交易'); return; }
+
+  // Collect unique dates and fetch historical rates
+  const allDates = new Set<string>();
+  for (const t of [...unlinkedWx, ...unlinkedCc]) {
+    if (t.dateISO) allDates.add(t.dateISO.slice(0, 10));
+  }
+  showToast('正在获取历史汇率...', 'info');
+  const historicalRates = await fetchHistoricalRates([...allDates]);
+  if (!Object.keys(historicalRates).length) {
+    showToast('无法获取历史汇率，请检查网络连接', 'error');
+    return;
+  }
 
   const usedCcIds = new Set<string>();
   const proposals: AutoLinkProposal[] = [];
@@ -457,9 +477,9 @@ export function autoLinkWxCc(): void {
     if (wx.amount <= 0) continue;
     const wxDate = wx.dateISO || '';
     if (!wxDate) continue;
-    const wxMonth = wxDate.slice(0, 7);
-    const refRate = getHistoricalRate(wxMonth);
-    const rMin = refRate - RATE_TOLERANCE, rMax = refRate + RATE_TOLERANCE;
+    const refRate = lookupDailyRate(historicalRates, wxDate.slice(0, 10));
+    if (!refRate) continue;
+    const rMin = refRate - RATE_TOLERANCE_DOWN, rMax = refRate + RATE_TOLERANCE_UP;
     let bestCc: CCTransaction | null = null, bestScore = Infinity;
     for (const cc of unlinkedCc) {
       if (usedCcIds.has(cc.id) || cc.amount <= 0) continue;
@@ -481,14 +501,16 @@ export function autoLinkWxCc(): void {
     }
   }
   if (!proposals.length) {
-    const fallbackRate = getHistoricalRate('');
-    showToast(`未找到符合条件的匹配（日期±2天，汇率${(fallbackRate - RATE_TOLERANCE).toFixed(2)}-${(fallbackRate + RATE_TOLERANCE).toFixed(2)}）`);
+    const sampleDate = sortedWx[0]?.dateISO?.slice(0, 10) || '';
+    const sampleRate = lookupDailyRate(historicalRates, sampleDate);
+    const rateStr = sampleRate ? `${(sampleRate - RATE_TOLERANCE_DOWN).toFixed(4)}-${(sampleRate + RATE_TOLERANCE_UP).toFixed(4)}` : 'N/A';
+    showToast(`未找到符合条件的匹配（日期±2天，汇率${rateStr}）`);
     return;
   }
   const ap = proposals as typeof state.autoLinkProposals;
   ap._rateMin = globalRateMin;
   ap._rateMax = globalRateMax;
-  ap._rateTolerance = RATE_TOLERANCE;
+  ap._rateTolerance = RATE_TOLERANCE_UP;
   state.setAutoLinkProposals(ap);
   showAutoLinkReview();
 }

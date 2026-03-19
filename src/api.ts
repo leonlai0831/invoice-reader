@@ -29,6 +29,8 @@ export const setPortable = (enabled: boolean) => postJson('/api/config/portable'
 
 // Rates
 export const getRates = () => fetchJson<{ ok: boolean; rates: Record<string, number>; live: boolean }>('/api/rates');
+export const getHistoricalRates = (start: string, end: string, base = 'CNY', target = 'MYR') =>
+  fetchJson<{ ok: boolean; rates: Record<string, number>; error?: string }>(`/api/rates/history?start=${start}&end=${end}&base=${base}&target=${target}`);
 
 // Data
 export const getData = () => fetchJson<{ ok: boolean; rows: any[]; needsFolder?: boolean; error?: string }>('/api/data');
