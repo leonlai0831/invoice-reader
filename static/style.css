@@ -149,7 +149,7 @@ button {
   cursor: pointer;
   font-family: inherit;
   border: none;
-  transition: all .15s ease;
+  transition: transform .15s ease, box-shadow .15s ease, filter .15s ease, background .15s ease, color .15s ease, border-color .15s ease, opacity .15s ease;
 }
 
 ::-webkit-scrollbar { width: 4px; height: 4px }
