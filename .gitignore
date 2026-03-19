@@ -8,3 +8,4 @@ build/
 NUL
 desktop.ini
 static/dist/
+.gstack/

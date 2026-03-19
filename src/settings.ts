@@ -117,6 +117,8 @@ export function renderRates(): void {
   if (!state.ratesLive) stripHtml += `<span style="color:#f97316;font-size:10px">\u26A0 估算汇率</span>`;
   if (strip) strip.innerHTML = stripHtml;
   if (detail) detail.innerHTML = detailHtml;
+  const banner = document.getElementById('rate-warning-banner');
+  if (banner) banner.classList.toggle('visible', !state.ratesLive);
 }
 
 // ── Memory ──────────────────────────────────────────────────────

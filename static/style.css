@@ -1057,8 +1057,13 @@ tr.row-selected td { background: rgba(99,102,241,.04) !important }
   box-shadow: 0 8px 32px rgba(0,0,0,.4);
   display: flex; align-items: flex-start; gap: 10px;
   animation: toastIn .25s ease; position: relative; overflow: hidden;
+  border-left: 3px solid var(--bdr);
 }
 .toast.removing { animation: toastOut .25s ease forwards }
+.toast-success { border-left-color: var(--green) }
+.toast-error { border-left-color: var(--red) }
+.toast-warning { border-left-color: var(--orange) }
+.toast-info { border-left-color: var(--acc) }
 .toast-success .toast-icon { color: var(--green) }
 .toast-error .toast-icon { color: var(--red) }
 .toast-warning .toast-icon { color: var(--orange) }
@@ -1228,19 +1233,34 @@ tr.row-selected td { background: rgba(99,102,241,.04) !important }
   white-space: nowrap;
 }
 
+/* ── Rate Warning Banner (mobile fallback) ──────────────── */
+.rate-warning-banner {
+  display: none;
+  text-align: center;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #f97316;
+  background: rgba(249,115,22,.08);
+  border-bottom: 1px solid rgba(249,115,22,.15);
+}
+
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .dash-grid { grid-template-columns: 1fr }
   .card-grid { grid-template-columns: repeat(2, 1fr) }
   #header-inner { padding: 0 16px }
   #main { padding: 18px }
-  #rate-strip { display: none }
+  #rate-strip { flex: 0 1 auto; gap: 0; justify-content: flex-end }
+  #rate-strip .rate-item { display: none }
   .scan-bar { flex-wrap: wrap }
 }
 
 @media (max-width: 600px) {
   .card-grid { grid-template-columns: 1fr }
   .hdr-actions { flex-wrap: wrap; gap: 6px }
+  #rate-strip { display: none }
+  .rate-warning-banner.visible { display: block }
   #tabs { flex-wrap: wrap }
   .tab { font-size: 12px; padding: 6px 10px }
   #main { padding: 10px }
