@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Invoice Reader — Optimum Group</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- Toast container -->
+<div id="toast-container" aria-live="polite" aria-atomic="false"></div>
+
+<!-- Confirm modal -->
+<div id="confirm-modal">
+  <div class="modal-box" style="width:420px;text-align:center">
+    <div id="confirm-icon" style="font-size:40px;margin-bottom:10px">⚠️</div>
+    <h3 id="confirm-title" style="font-size:15px">确认操作</h3>
+    <div id="confirm-msg" style="margin:14px 0;font-size:13px;color:var(--muted);line-height:1.7"></div>
+    <div class="modal-actions" style="justify-content:center">
+      <button class="btn btn-ghost btn-sm" onclick="closeConfirm(false)">取消</button>
+      <button class="btn btn-pri btn-sm" id="confirm-yes-btn" onclick="closeConfirm(true)">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- Loading -->
+<div id="loading">
+  <div class="spinner"></div>
+  <div style="color:#818cf8;font-weight:700;font-size:15px" id="loading-text">AI 正在分析发票...</div>
+  <div id="loading-name" style="color:var(--muted);font-size:12px;margin-top:4px"></div>
+  <div style="color:var(--muted);font-size:11px;margin-top:8px">自动识别币种并换算马币</div>
+</div>
+
+<!-- Image modal -->
+<div id="img-modal" onclick="closeImgModal()"><img id="img-preview" src="" alt=""></div>
+
+<!-- Settings modal -->
+<div id="modal">
+  <div class="modal-box" style="width:540px;max-height:85vh;overflow-y:auto">
+    <h3>⚙️ 设置</h3>
+
+    <!-- API Key section -->
+    <div class="settings-section">
+      <div class="settings-section-title">🔑 API Key</div>
+      <label>Anthropic API Key</label>
+      <input type="password" id="api-key-input" placeholder="sk-ant-api03-...">
+      <div class="modal-note">
+        API Key 仅存储在本机，不会上传。<br>
+        获取 Key：<span class="fake-link" onclick="openExternal('https://console.anthropic.com/account/keys')">console.anthropic.com</span>
+      </div>
+    </div>
+
+    <!-- Claims Folder section -->
+    <div class="settings-section" style="margin-top:18px">
+      <div class="settings-section-title">📁 Claims Folder</div>
+      <label>数据存储路径</label>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="folder-input" placeholder="未设置 — 点击浏览选择文件夹" readonly style="flex:1;cursor:pointer" onclick="browseFolderPicker()">
+        <button class="btn btn-pri btn-sm" onclick="browseFolderPicker()">📂 浏览</button>
+      </div>
+      <div class="modal-note" style="margin-top:6px">
+        发票数据和源文件将保存到此文件夹。<br>
+        <span id="folder-status" style="color:var(--green)"></span>
+      </div>
+    </div>
+
+    <!-- Portable Mode section -->
+    <div class="settings-section" style="margin-top:18px">
+      <div class="settings-section-title">☁️ 便携模式 (Portable Mode)</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+        <label class="toggle-switch">
+          <input type="checkbox" id="portable-toggle" onchange="togglePortableMode(this.checked)">
+          <span class="toggle-slider"></span>
+        </label>
+        <span id="portable-label" style="font-size:13px;color:var(--muted)">关闭</span>
+      </div>
+      <div class="modal-note">
+        开启后，配置文件保存在 exe 同目录，数据路径转为相对路径。<br>
+        将整个文件夹放在 Google Drive / OneDrive 中即可跨电脑同步使用。
+      </div>
+    </div>
+
+    <!-- Branch Addresses section -->
+    <div class="settings-section" style="margin-top:18px">
+      <div class="settings-section-title">📍 Branch Addresses</div>
+      <div class="modal-note" style="margin-top:0;margin-bottom:10px">
+        配置各分店的物理地址，系统将根据发票上的地址自动匹配 Branch。
+      </div>
+      <div id="branch-addr-list"></div>
+      <button class="btn btn-ghost btn-sm" onclick="addBranchAddressRow()" style="margin-top:8px">＋ 添加分店地址</button>
+    </div>
+
+    <!-- Smart Memory section -->
+    <div class="settings-section" style="margin-top:18px">
+      <div class="settings-section-title">🧠 Smart Memory</div>
+      <div class="modal-note" style="margin-top:0;margin-bottom:10px">
+        系统从已提交的 Claim 中学习，自动预测 Branch、Category，并扩充供应商/描述下拉列表。
+      </div>
+      <div id="memory-stats" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-ghost btn-sm" id="rebuild-memory-btn" onclick="rebuildMemory()">🔄 从归档重建记忆</button>
+        <span id="memory-status" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+    </div>
+
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">关闭</button>
+      <button class="btn btn-pri btn-sm" onclick="saveSettings()">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Duplicate warning modal -->
+<div id="dup-modal">
+  <div class="modal-box" style="width:460px">
+    <h3>⚠️ 重复发票检测</h3>
+    <div id="dup-info" style="margin:12px 0;font-size:13px;line-height:1.8"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-sm" onclick="cancelDup()">❌ 关闭</button>
+      <button class="btn btn-danger btn-sm" id="dup-add-anyway-btn" onclick="addAnyway()">⚠️ 仍然添加</button>
+    </div>
+  </div>
+</div>
+
+<!-- Complete Claim success modal -->
+<div id="complete-modal">
+  <div class="modal-box" style="width:440px;text-align:center">
+    <div style="font-size:48px;margin-bottom:12px">✅</div>
+    <h3 style="color:var(--green)">Claim 已成功提交！</h3>
+    <div id="complete-info" style="margin:16px 0;font-size:13px;color:var(--muted);line-height:1.8"></div>
+    <div style="display:flex;gap:8px;justify-content:center">
+      <button class="btn btn-ghost btn-sm" onclick="openArchiveFolder()">📂 打开文件夹</button>
+      <button class="btn btn-pri btn-sm" onclick="closeCompleteModal()">👍 好的</button>
+    </div>
+  </div>
+</div>
+
+<!-- Header -->
+<header id="header">
+  <div id="header-inner">
+    <div class="logo">
+      🧾 Invoice Reader
+      <span class="logo-badge">Optimum Group</span>
+    </div>
+    <div id="rate-strip">
+      <span style="animation:pulse 1s infinite" id="rate-loading">加载汇率中...</span>
+    </div>
+    <div class="hdr-actions">
+      <span class="cnt-badge" id="row-count">0 张</span>
+      <button class="btn btn-ghost btn-sm" onclick="showModal()">⚙️ 设置</button>
+      <button class="btn btn-ghost btn-sm" onclick="addManualRow()">＋ 手动添加</button>
+      <button class="btn btn-ok btn-sm" onclick="exportExcel()" id="export-btn" disabled>📊 导出 Excel</button>
+    </div>
+  </div>
+</header>
+
+<!-- Main -->
+<div id="main">
+  <div id="tabs">
+    <button class="tab active" id="tab-upload" onclick="switchTab('upload')">⬆️ 上传</button>
+    <button class="tab" id="tab-records" onclick="switchTab('records')">📋 记录 (<span id="tab-cnt">0</span>)</button>
+    <button class="tab" id="tab-cc" onclick="switchTab('cc')">💳 CC Statement</button>
+    <button class="tab" id="tab-dash" onclick="switchTab('dash')">📊 Dashboard</button>
+  </div>
+
+  <!-- Upload tab -->
+  <div id="pane-upload">
+    <!-- Scan New Claim folder -->
+    <div class="scan-bar">
+      <div class="scan-bar-left">
+        <div class="scan-bar-icon">📂</div>
+        <div>
+          <div class="scan-bar-title">一键读取 New Claim 文件夹</div>
+          <div class="scan-bar-path" id="scan-path">未设置路径</div>
+        </div>
+      </div>
+      <button class="btn btn-ok" onclick="scanNewClaim()" id="scan-btn">📂 读取 New Claim</button>
+    </div>
+
+    <!-- Scan progress -->
+    <div id="scan-progress" style="display:none">
+      <div class="scan-progress-bar">
+        <div class="scan-progress-fill" id="scan-fill" style="width:0%"></div>
+      </div>
+      <div class="scan-progress-text" id="scan-text">准备中...</div>
+    </div>
+
+    <div style="text-align:center;margin:12px 0;font-size:12px;color:var(--muted)">── 或手动上传 ──</div>
+
+    <div id="dropzone" ondragover="onDragOver(event)" ondragleave="onDragLeave()" ondrop="onDrop(event)" onclick="document.getElementById('file-input').click()">
+      <div style="font-size:44px">🧾</div>
+      <h2>拖拽发票 / 收据到这里</h2>
+      <p>支持 JPG · PNG · WEBP · PDF，可批量上传</p>
+      <button class="btn btn-pri" onclick="event.stopPropagation();document.getElementById('file-input').click()">📁 选择文件</button>
+      <input type="file" id="file-input" multiple accept=".jpg,.jpeg,.png,.webp,.pdf" style="display:none" onchange="handleFileSelect(this.files)">
+    </div>
+
+    <div class="info-bar">
+      <div class="info-bar-title">💱 自动汇率换算（实时）</div>
+      <div class="rate-row" id="rate-detail-row">
+        <span style="color:var(--muted);font-size:12px;animation:pulse 1s infinite">加载中...</span>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:var(--muted)">
+        📝 外币发票自动在 Description 备注原价，例如：<span style="color:var(--txt);font-weight:500">"Google ads (USD 100.00)"</span>
+      </div>
+    </div>
+
+    <div class="card-grid">
+      <div class="card"><div class="card-icon">🤖</div><div class="card-title">AI 自动识别</div><div class="card-desc">自动提取供应商、发票号、日期、金额、货币</div></div>
+      <div class="card"><div class="card-icon">💱</div><div class="card-title">实时汇率换算</div><div class="card-desc">USD/CNY/SGD/EUR/GBP 自动换算成 RM</div></div>
+      <div class="card"><div class="card-icon">📝</div><div class="card-title">原价备注</div><div class="card-desc">Description 自动加注原始币种和金额</div></div>
+      <div class="card"><div class="card-icon">📊</div><div class="card-title">导出 Excel</div><div class="card-desc">格式完全匹配 Claim Master Sheet</div></div>
+    </div>
+
+    <div id="col-info" class="card">
+      <div style="font-size:11px;font-weight:700;color:#818cf8;text-transform:uppercase;letter-spacing:.5px">导出列结构（与 Claim Master Sheet 完全一致）</div>
+      <div class="col-chips">
+        <span class="col-chip">BRANCH</span>
+        <span class="col-chip">SUPPLIERS NAME</span>
+        <span class="col-chip">INVOICE NO.</span>
+        <span class="col-chip">INVOICE DATE</span>
+        <span class="col-chip">CATEGORY</span>
+        <span class="col-chip">DESCRIPTION</span>
+        <span class="col-chip">AMOUNT (RM)</span>
+        <span class="col-chip">CLAIM DATE</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Records tab -->
+  <div id="pane-records" style="display:none">
+    <!-- Sub-tabs: Current / Archived -->
+    <div class="subtabs">
+      <button class="subtab active" id="subtab-current" onclick="switchRecordTab('current')">📋 当前</button>
+      <button class="subtab" id="subtab-archived" onclick="switchRecordTab('archived')">📦 已归档</button>
+    </div>
+
+    <!-- ═══ Current records sub-pane ═══ -->
+    <div id="current-records-pane">
+      <div id="stats-bar">
+        <div class="stat-card"><div class="stat-val" id="stat-count">0</div><div class="stat-label">张发票</div></div>
+        <div class="stat-card green"><div class="stat-val" id="stat-total">RM 0.00</div><div class="stat-label">总金额 (MYR)</div></div>
+        <div id="foreign-stats"></div>
+        <div id="filter-branch-wrap" style="position:relative;max-width:180px">
+          <button type="button" id="filter-branch-btn" onclick="toggleBranchFilter()">所有 Branch ▾</button>
+          <div id="filter-branch-dropdown" style="display:none"></div>
+        </div>
+        <select style="max-width:180px" id="filter-cat" onchange="selectedRows.clear();renderTable()">
+          <option value="">所有 Category</option>
+          <option>Advertisement</option><option>Design Service</option><option>Equipment</option>
+          <option>Event</option><option>HR</option><option>Maintenance</option>
+          <option>Marketing</option><option>Operation</option><option>Others</option>
+          <option>Purchasing</option><option>Recruitment</option><option>Renovation</option>
+          <option>Sanitary</option><option>Service</option><option>Shipping</option>
+          <option>Staff Welfare</option><option>Stationary</option><option>Subscription</option>
+          <option>Telco</option><option>Welfare</option>
+        </select>
+        <input type="text" id="search-records" placeholder="🔍 搜索..." oninput="searchRecords(this.value)" style="max-width:180px;margin-left:4px">
+        <button class="btn btn-ghost btn-sm" onclick="resetFilters()">重置</button>
+        <button class="btn btn-ghost btn-sm" onclick="setAllClaimDateToday()" style="margin-left:auto">📅 今天日期</button>
+        <button class="btn btn-ok btn-sm" onclick="exportExcel()">📊 导出 Excel</button>
+        <button class="btn btn-pri btn-sm" onclick="completeClaim()" id="complete-btn">✅ Submit Claim</button>
+      </div>
+
+      <!-- Selection action bar (shown when rows are selected) -->
+      <div id="selection-bar" style="display:none">
+        <div class="sel-info">
+          <span id="sel-count-text">已选 0 张</span>
+          <span class="sel-divider">|</span>
+          <span id="sel-total-text" style="color:var(--green);font-weight:700">RM 0.00</span>
+        </div>
+        <div class="sel-actions" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <select id="bulk-branch" style="max-width:100px;margin-bottom:0"><option value="">Branch</option>
+            <option>HQ</option><option>BK</option><option>BT</option><option>PK</option><option>PJ</option>
+            <option>KK</option><option>KM</option><option>QSM</option><option>USJ</option><option>DPC</option><option>OTG</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="applyBulkBranch()" style="padding:5px 10px">应用</button>
+          <select id="bulk-category" style="max-width:130px;margin-bottom:0"><option value="">Category</option>
+            <option>Advertisement</option><option>Design Service</option><option>Equipment</option>
+            <option>Event</option><option>HR</option><option>Maintenance</option>
+            <option>Marketing</option><option>Operation</option><option>Others</option>
+            <option>Purchasing</option><option>Recruitment</option><option>Renovation</option>
+            <option>Sanitary</option><option>Service</option><option>Shipping</option>
+            <option>Staff Welfare</option><option>Stationary</option><option>Subscription</option>
+            <option>Telco</option><option>Welfare</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="applyBulkCategory()" style="padding:5px 10px">应用</button>
+          <button class="btn btn-ghost btn-sm" onclick="applyBulkClaimDate()" style="padding:5px 10px">📅 今天日期</button>
+          <span class="sel-divider">|</span>
+          <button class="btn btn-danger btn-sm" onclick="deleteSelected()">🗑 删除选中</button>
+          <button class="btn btn-ok btn-sm" onclick="completeClaim()">✅ 提交选中 Claim</button>
+        </div>
+      </div>
+
+      <div id="empty-state" class="empty">
+        <div class="icon">📭</div>
+        <h3>没有记录</h3>
+        <button class="btn btn-pri btn-sm" onclick="switchTab('upload')">去上传</button>
+      </div>
+
+      <div id="filter-empty-state" class="empty" style="display:none">
+        <div class="icon">🔍</div>
+        <h3>没有匹配的记录</h3>
+        <p style="color:var(--muted);margin:8px 0">当前筛选条件下没有结果</p>
+        <button class="btn btn-ghost btn-sm" onclick="resetFilters()">重置筛选</button>
+      </div>
+
+      <div id="table-wrap" style="display:none">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:28px;text-align:center;padding:0"><input type="checkbox" id="select-all-cb" onchange="toggleSelectAll()" style="cursor:pointer;accent-color:var(--acc)"></th>
+              <th></th>
+              <th style="cursor:pointer;user-select:none" onclick="toggleSort('branch')">BRANCH<span id="sort-branch"></span></th>
+              <th style="cursor:pointer;user-select:none" onclick="toggleSort('supplierName')">SUPPLIERS NAME<span id="sort-supplierName"></span></th>
+              <th style="cursor:pointer;user-select:none" onclick="toggleSort('invoiceNo')">INVOICE NO.<span id="sort-invoiceNo"></span></th>
+              <th style="cursor:pointer;user-select:none" onclick="toggleSort('invoiceDate')">INVOICE DATE<span id="sort-invoiceDate"></span></th>
+              <th style="cursor:pointer;user-select:none" onclick="toggleSort('category')">CATEGORY<span id="sort-category"></span></th>
+              <th>DESCRIPTION</th>
+              <th>CURRENCY</th>
+              <th>ORIG AMT</th>
+              <th style="cursor:pointer;user-select:none" onclick="toggleSort('amount')">AMOUNT (RM)<span id="sort-amount"></span></th>
+              <th style="cursor:pointer;user-select:none" onclick="toggleSort('claimDate')">CLAIM DATE<span id="sort-claimDate"></span></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div id="legend"></div>
+    </div>
+
+    <!-- ═══ Archived records sub-pane ═══ -->
+    <div id="archived-records-pane" style="display:none">
+      <div style="margin-bottom:14px;display:flex;gap:8px;align-items:center">
+        <input type="text" id="archive-search" placeholder="🔍 搜索供应商、发票号..." oninput="archiveSearch=this.value;renderArchive()" style="max-width:300px">
+        <span id="archive-count-text" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+      <div id="archive-body"></div>
+    </div>
+  </div>
+
+  <!-- CC Statement tab -->
+  <div id="pane-cc" style="display:none">
+    <div class="subtabs">
+      <button class="subtab active" id="cc-subtab-cc" onclick="switchCCTab('cc')">💳 CC账本</button>
+      <button class="subtab" id="cc-subtab-wx" onclick="switchCCTab('wx')">💬 微信账本</button>
+    </div>
+    <div id="crossref-banner" style="display:none;background:linear-gradient(135deg,#1a3a5c,#1a2a4c);border:1px solid var(--blue);border-radius:10px;padding:10px 16px;margin:8px 0;align-items:center;justify-content:space-between;font-size:12px;color:var(--txt);gap:8px"></div>
+
+    <!-- ═══ CC Ledger sub-pane ═══ -->
+    <div id="cc-pane-cc">
+      <div id="cc-upload-zone-cc" class="cc-upload-zone"
+           ondragover="ccDragOver(event,'cc')" ondragleave="ccDragLeave('cc')" ondrop="ccDrop(event,'cc')">
+        <div style="font-size:36px">💳</div>
+        <h3>上传信用卡账单</h3>
+        <p>支持 CSV / XLSX / PDF 格式</p>
+        <button class="btn btn-pri btn-sm" onclick="event.stopPropagation();document.getElementById('cc-file-input').click()">💳 选择文件</button>
+        <input type="file" id="cc-file-input" accept=".csv,.xlsx,.xls,.pdf" style="display:none" onchange="handleCCFile(this.files[0],'cc')">
+        <div style="font-size:11px;color:var(--muted);margin-top:8px">支持 Excel (.xlsx)、CSV、PDF</div>
+      </div>
+      <div id="cc-ledger-body-cc">
+        <div class="empty"><div class="icon">💳</div><h3>账本为空</h3>
+        <p style="font-size:12px;color:var(--muted)">上传信用卡账单，数据会自动保存到账本</p></div>
+      </div>
+    </div>
+
+    <!-- ═══ WX Ledger sub-pane ═══ -->
+    <div id="cc-pane-wx" style="display:none">
+      <div id="cc-upload-zone-wx" class="cc-upload-zone"
+           ondragover="ccDragOver(event,'wx')" ondragleave="ccDragLeave('wx')" ondrop="ccDrop(event,'wx')">
+        <div style="font-size:36px">💬</div>
+        <h3>上传微信支付账单</h3>
+        <p>支持 CSV / XLSX / PDF / 截图</p>
+        <button class="btn btn-sm" onclick="event.stopPropagation();document.getElementById('wx-file-input').click()"
+                style="background:linear-gradient(135deg,#07c160,#06ad56);color:#fff;border:none;font-weight:600">
+          💬 选择文件
+        </button>
+        <input type="file" id="wx-file-input" accept=".csv,.xlsx,.xls,.pdf,.jpg,.jpeg,.png,.webp" style="display:none" onchange="handleCCFile(this.files[0],'wechat')">
+        <div style="font-size:11px;color:var(--muted);margin-top:8px">支持 Excel、CSV、PDF 和微信截图</div>
+      </div>
+      <div id="cc-ledger-body-wx">
+        <div class="empty"><div class="icon">💬</div><h3>账本为空</h3>
+        <p style="font-size:12px;color:var(--muted)">上传微信支付账单，数据会自动保存到账本</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard tab -->
+  <div id="pane-dash" style="display:none">
+    <div class="dash-controls">
+      <div class="dash-date-range">
+        <label>📅 日期范围:</label>
+        <input type="date" id="dash-from" onchange="renderDashboard()">
+        <span style="color:var(--muted)">→</span>
+        <input type="date" id="dash-to" onchange="renderDashboard()">
+        <button class="btn btn-ghost btn-sm" onclick="resetDashDates()">重置</button>
+      </div>
+    </div>
+
+    <div class="dash-stats" id="dash-stats"></div>
+
+    <div class="dash-grid">
+      <div class="dash-card">
+        <div class="dash-card-title">📊 各 Category 支出</div>
+        <div class="dash-chart-wrap"><canvas id="chart-category"></canvas></div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title">🏢 各 Branch 支出</div>
+        <div class="dash-chart-wrap"><canvas id="chart-branch"></canvas></div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title">📈 月度趋势</div>
+        <div class="dash-chart-wrap"><canvas id="chart-monthly"></canvas></div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title">🏆 Top 10 供应商</div>
+        <div class="dash-chart-wrap"><canvas id="chart-suppliers"></canvas></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Notes Modal -->
+<div id="notes-modal" class="modal">
+  <div class="modal-box" style="width:420px">
+    <h3 style="margin-bottom:12px">📝 备注</h3>
+    <textarea id="notes-input" rows="4" placeholder="输入备注内容..."
+      style="width:100%;resize:vertical;background:var(--bg-2);color:var(--fg);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:14px;font-family:inherit"></textarea>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+      <button class="btn btn-ghost btn-sm" onclick="closeNotesModal(false)">取消</button>
+      <button class="btn btn-pri btn-sm" onclick="closeNotesModal(true)">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+
+
+
+<!-- CC Manual Assign Banner -->
+<div id="cc-assign-banner" style="display:none">
+  <span class="cc-assign-desc"></span>
+  <button class="btn btn-ghost btn-sm" onclick="cancelCCAssign()" style="margin-left:12px;font-size:11px">✕ 取消</button>
+</div>
+
+<script type="module" src="/static/dist/app.js"></script>
+</body>
+</html>

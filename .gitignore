@@ -1,0 +1,10 @@
+node_modules/
+dist/
+__pycache__/
+*.pyc
+build/
+*.spec
+.env
+NUL
+desktop.ini
+static/dist/
