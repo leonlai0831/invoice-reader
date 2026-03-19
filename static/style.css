@@ -93,6 +93,11 @@
 [data-theme="light"] .btn-ghost:hover { background: rgba(0,0,0,.08); border-color: rgba(0,0,0,.12); }
 [data-theme="light"] .scan-bar { background: rgba(79,70,229,.06); border-color: rgba(79,70,229,.12); }
 [data-theme="light"] .cc-upload-zone { background: rgba(0,0,0,.02); border-color: rgba(0,0,0,.1); }
+[data-theme="light"] .toast { background: #ffffff; border-color: rgba(0,0,0,.08); box-shadow: 0 8px 32px rgba(0,0,0,.1); }
+[data-theme="light"] .card:hover { border-color: rgba(0,0,0,.12); }
+[data-theme="light"] .dash-card:hover { border-color: rgba(0,0,0,.12); }
+[data-theme="light"] .dash-stat-card:hover { border-color: rgba(0,0,0,.12); }
+[data-theme="light"] #cc-assign-banner { background: linear-gradient(135deg, rgba(79,70,229,.1), rgba(5,150,105,.08)); }
 
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
