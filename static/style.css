@@ -624,7 +624,7 @@ td {
   color: var(--green);
   margin-bottom: 12px;
 }
-.rate-row { display: flex; gap: 22px; flex-wrap: wrap }
+.rate-row { display: flex; gap: 16px 22px; flex-wrap: wrap }
 .rate-item-lg { display: flex; align-items: center; gap: 8px }
 
 /* ── Empty State ────────────────────────────────────────────── */
@@ -1235,6 +1235,8 @@ tr.row-selected td { background: rgba(99,102,241,.04) !important }
   .card-grid { grid-template-columns: repeat(2, 1fr) }
   #header-inner { padding: 0 16px }
   #main { padding: 18px }
+  #rate-strip { display: none }
+  .scan-bar { flex-wrap: wrap }
 }
 
 @media (max-width: 600px) {
