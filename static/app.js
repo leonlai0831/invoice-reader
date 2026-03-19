@@ -2361,33 +2361,52 @@ async function runLedgerCrossRef(){
 
 let autoLinkProposals = []; // [{wxTxn, ccTxn, rate, accepted:true}, ...]
 
-function _getHistoricalRate(monthKey){
-  // Compute avg rate from existing linked pairs in the same month
-  const pairs = [];
-  for(const wx of ccLedgerWX){
-    if(!wx.crossRefId || !wx.crossRefRate) continue;
-    const mk = (wx.dateISO || "").slice(0,7);
-    if(mk === monthKey) pairs.push(wx.crossRefRate);
-  }
-  if(pairs.length >= 1){
-    return pairs.reduce((s,r) => s+r, 0) / pairs.length;
-  }
-  // Fallback: avg from ALL existing linked pairs
-  const allRates = ccLedgerWX.filter(t => t.crossRefId && t.crossRefRate).map(t => t.crossRefRate);
-  if(allRates.length >= 1){
-    return allRates.reduce((s,r) => s+r, 0) / allRates.length;
-  }
-  // Last fallback: current live rate
-  return rates.CNY || 0.62;
+async function _fetchHistoricalRates(dates){
+  // Fetch historical CNY->MYR rates for a set of dates from the server
+  if(!dates.length) return {};
+  const sorted = [...dates].sort();
+  const start = sorted[0], end = sorted[sorted.length - 1];
+  try{
+    const r = await fetch(`/api/rates/history?start=${start}&end=${end}&base=CNY&target=MYR`);
+    const d = await r.json();
+    if(!d.ok || !d.rates) return {};
+    return d.rates; // {"YYYY-MM-DD": rate, ...}
+  }catch(e){ return {}; }
 }
 
-function autoLinkWxCc(){
+function _lookupDailyRate(historicalRates, dateISO){
+  // Look up the rate for a specific date; if missing (weekend/holiday),
+  // use the closest previous date's rate
+  if(historicalRates[dateISO]) return historicalRates[dateISO];
+  const allDates = Object.keys(historicalRates).sort();
+  let best = null;
+  for(const d of allDates){
+    if(d <= dateISO) best = d;
+    else break;
+  }
+  return best ? historicalRates[best] : null;
+}
+
+async function autoLinkWxCc(){
   const MAX_DAY_DIFF = 2; // CC date must be within 0-2 days of WX date
-  const RATE_TOLERANCE = 0.02;
+  const RATE_TOLERANCE_UP = 0.02;
+  const RATE_TOLERANCE_DOWN = 0.01;
   const unlinkedWx = ccLedgerWX.filter(t => !t.crossRefId);
   const unlinkedCc = ccLedgerCC.filter(t => !t.crossRefId && _isWechatRelated(t.description));
   if(!unlinkedWx.length || !unlinkedCc.length){
     showToast("没有可匹配的未关联交易");
+    return;
+  }
+  // Collect unique dates and fetch historical rates
+  const allDates = new Set();
+  for(const t of [...unlinkedWx, ...unlinkedCc]){
+    if(t.dateISO) allDates.add(t.dateISO.slice(0,10));
+  }
+  showToast("正在获取历史汇率...", "info");
+  const historicalRates = await _fetchHistoricalRates([...allDates]);
+  const hasRates = Object.keys(historicalRates).length > 0;
+  if(!hasRates){
+    showToast("无法获取历史汇率，请检查网络连接", "error");
     return;
   }
   const usedCcIds = new Set();
@@ -2397,11 +2416,11 @@ function autoLinkWxCc(){
   for(const wx of sortedWx){
     if(wx.amount <= 0) continue;
     const wxDate = wx.dateISO || "";
-    if(!wxDate) continue; // need date for matching
-    const wxMonth = wxDate.slice(0,7);
-    // Get historical rate for this month
-    const refRate = _getHistoricalRate(wxMonth);
-    const rMin = refRate - RATE_TOLERANCE, rMax = refRate + RATE_TOLERANCE;
+    if(!wxDate) continue;
+    // Look up the historical rate for this transaction date
+    const refRate = _lookupDailyRate(historicalRates, wxDate.slice(0,10));
+    if(!refRate) continue;
+    const rMin = refRate - RATE_TOLERANCE_DOWN, rMax = refRate + RATE_TOLERANCE_UP;
     let bestCc = null, bestScore = Infinity;
     for(const cc of unlinkedCc){
       if(usedCcIds.has(cc.id)) continue;
@@ -2411,10 +2430,10 @@ function autoLinkWxCc(){
       // Date check: must be within 0-2 days
       const daysDiff = Math.abs((new Date(ccDate) - new Date(wxDate)) / 86400000);
       if(daysDiff > MAX_DAY_DIFF) continue;
-      // Rate check: must be within historical rate +/- tolerance
+      // Rate check: must be within daily rate -0.01 to +0.02
       const rate = cc.amount / wx.amount;
       if(rate < rMin || rate > rMax) continue;
-      // Score: prefer closest rate + closest date
+      // Score: prefer closest rate to ref + closest date
       const score = Math.abs(rate - refRate) + daysDiff * 0.01;
       if(score < bestScore){
         bestScore = score;
@@ -2430,14 +2449,16 @@ function autoLinkWxCc(){
     }
   }
   if(!proposals.length){
-    const fallbackRate = _getHistoricalRate("");
-    showToast(`未找到符合条件的匹配（日期±2天，汇率${(fallbackRate-RATE_TOLERANCE).toFixed(2)}-${(fallbackRate+RATE_TOLERANCE).toFixed(2)}）`);
+    const sampleDate = sortedWx[0]?.dateISO?.slice(0,10) || "";
+    const sampleRate = _lookupDailyRate(historicalRates, sampleDate);
+    const rateStr = sampleRate ? `${(sampleRate-RATE_TOLERANCE_DOWN).toFixed(4)}-${(sampleRate+RATE_TOLERANCE_UP).toFixed(4)}` : "N/A";
+    showToast(`未找到符合条件的匹配（日期±2天，汇率${rateStr}）`);
     return;
   }
   autoLinkProposals = proposals;
   autoLinkProposals._rateMin = globalRateMin;
   autoLinkProposals._rateMax = globalRateMax;
-  autoLinkProposals._rateTolerance = RATE_TOLERANCE;
+  autoLinkProposals._rateTolerance = RATE_TOLERANCE_UP;
   showAutoLinkReview();
 }
 

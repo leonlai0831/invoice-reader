@@ -277,6 +277,39 @@ def get_rates():
             "rates": {"USD": 4.45, "CNY": 0.62, "SGD": 3.35, "EUR": 4.85, "GBP": 5.75, "MYR": 1},
         })
 
+
+@app.route("/api/rates/history")
+def get_rates_history():
+    """Fetch historical daily exchange rates for a date range.
+
+    Query params:
+        start: YYYY-MM-DD
+        end:   YYYY-MM-DD
+        base:  base currency (default CNY)
+        target: target currency (default MYR)
+    Returns: {ok, rates: {"YYYY-MM-DD": float, ...}}
+    """
+    from flask import request as flask_request
+    start = flask_request.args.get("start", "")
+    end = flask_request.args.get("end", "")
+    base = flask_request.args.get("base", "CNY").upper()
+    target = flask_request.args.get("target", "MYR").upper()
+    if not start or not end:
+        return jsonify({"ok": False, "error": "start and end required"})
+    try:
+        url = f"https://api.frankfurter.app/{start}..{end}?from={base}&to={target}"
+        r = req_lib.get(url, timeout=10)
+        data = r.json()
+        raw_rates = data.get("rates", {})
+        result = {}
+        for date_str, rate_obj in raw_rates.items():
+            val = rate_obj.get(target)
+            if val and isinstance(val, (int, float)) and val > 0:
+                result[date_str] = round(val, 6)
+        return jsonify({"ok": True, "rates": result})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
 # ── Data persistence API ────────────────────────────────────────
 
 @app.route("/api/data", methods=["GET"])

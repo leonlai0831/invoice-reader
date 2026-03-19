@@ -231,3 +231,88 @@ class TestCompleteClaimFileMove:
         shutil.copy2(src2, dest2)
         assert os.path.isfile(os.path.join(archive, "receipt.pdf"))
         assert os.path.isfile(os.path.join(archive, "receipt_1.pdf"))
+
+
+class TestGetRatesHistory:
+    """Tests for /api/rates/history endpoint."""
+
+    @pytest.fixture
+    def client(self, monkeypatch, tmp_dir):
+        """Create a Flask test client with mocked external requests."""
+        import main
+        monkeypatch.setattr(main, 'get_claims_root', lambda: tmp_dir)
+        main.app.config['TESTING'] = True
+        with main.app.test_client() as c:
+            yield c
+
+    def test_missing_params(self, client):
+        """Should return error when start/end are missing."""
+        rv = client.get('/api/rates/history')
+        data = rv.get_json()
+        assert data['ok'] is False
+        assert 'start and end required' in data['error']
+
+    def test_missing_end_param(self, client):
+        rv = client.get('/api/rates/history?start=2026-01-01')
+        data = rv.get_json()
+        assert data['ok'] is False
+
+    def test_successful_fetch(self, client, monkeypatch):
+        """Should return daily rates when API responds successfully."""
+        import main
+
+        class MockResp:
+            def json(self):
+                return {
+                    "rates": {
+                        "2026-01-02": {"MYR": 0.6521},
+                        "2026-01-03": {"MYR": 0.6535},
+                        "2026-01-06": {"MYR": 0.6500},
+                    }
+                }
+
+        def mock_get(url, timeout=10):
+            assert 'frankfurter' in url
+            assert '2026-01-01..2026-01-10' in url
+            assert 'from=CNY' in url
+            assert 'to=MYR' in url
+            return MockResp()
+
+        monkeypatch.setattr(main.req_lib, 'get', mock_get)
+        rv = client.get('/api/rates/history?start=2026-01-01&end=2026-01-10&base=CNY&target=MYR')
+        data = rv.get_json()
+        assert data['ok'] is True
+        assert len(data['rates']) == 3
+        assert data['rates']['2026-01-02'] == 0.6521
+        assert data['rates']['2026-01-03'] == 0.6535
+
+    def test_network_error_returns_error(self, client, monkeypatch):
+        """Network failure should return ok=False with error message."""
+        import main
+
+        def mock_get(url, timeout=10):
+            raise ConnectionError('No network')
+
+        monkeypatch.setattr(main.req_lib, 'get', mock_get)
+        rv = client.get('/api/rates/history?start=2026-01-01&end=2026-01-10')
+        data = rv.get_json()
+        assert data['ok'] is False
+        assert 'No network' in data['error']
+
+    def test_custom_currencies(self, client, monkeypatch):
+        """Should respect custom base/target currency params."""
+        import main
+
+        class MockResp:
+            def json(self):
+                return {"rates": {"2026-01-02": {"MYR": 4.45}}}
+
+        def mock_get(url, timeout=10):
+            assert 'from=USD' in url
+            assert 'to=MYR' in url
+            return MockResp()
+
+        monkeypatch.setattr(main.req_lib, 'get', mock_get)
+        rv = client.get('/api/rates/history?start=2026-01-01&end=2026-01-05&base=USD&target=MYR')
+        data = rv.get_json()
+        assert data['ok'] is True
