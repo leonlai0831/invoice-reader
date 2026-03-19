@@ -200,7 +200,7 @@ tr:hover td { background: rgba(255,255,255,.02) !important }
 .logo {
   font-size: 17px;
   font-weight: 800;
-  color: #fff;
+  color: var(--txt);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -363,7 +363,7 @@ tr:hover td { background: rgba(255,255,255,.02) !important }
 #dropzone h2 {
   font-size: 21px;
   font-weight: 700;
-  color: #f1f5f9;
+  color: var(--txt);
   margin: 14px 0 8px;
   letter-spacing: -.03em;
 }
@@ -393,7 +393,7 @@ tr:hover td { background: rgba(255,255,255,.02) !important }
 .card-icon { font-size: 24px; margin-bottom: 10px }
 .card-title {
   font-weight: 700;
-  color: #f1f5f9;
+  color: var(--txt);
   font-size: 13px;
   margin-bottom: 5px;
   letter-spacing: -.01em;
@@ -420,7 +420,7 @@ tr:hover td { background: rgba(255,255,255,.02) !important }
 .stat-val {
   font-size: 20px;
   font-weight: 800;
-  color: #fff;
+  color: var(--txt);
   letter-spacing: -.03em;
 }
 .stat-label {
@@ -549,7 +549,7 @@ td {
   font-size: 17px;
   font-weight: 700;
   margin-bottom: 18px;
-  color: #fff;
+  color: var(--txt);
   letter-spacing: -.03em;
 }
 
@@ -581,7 +581,7 @@ td {
 .settings-section-title {
   font-size: 13px;
   font-weight: 700;
-  color: #fff;
+  color: var(--txt);
   margin-bottom: 14px;
   letter-spacing: -.01em;
 }
@@ -679,7 +679,7 @@ td {
 .cc-upload-zone h3 {
   font-size: 17px;
   font-weight: 700;
-  color: #f1f5f9;
+  color: var(--txt);
   margin: 12px 0 6px;
   letter-spacing: -.03em;
 }
@@ -751,7 +751,7 @@ td {
 }
 
 .match-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px }
-.match-cc { font-size: 13px; color: #fff; font-weight: 600; letter-spacing: -.01em }
+.match-cc { font-size: 13px; color: var(--txt); font-weight: 600; letter-spacing: -.01em }
 .match-cc-amt { font-size: 16px; font-weight: 800; color: var(--green); letter-spacing: -.03em }
 .match-cc-desc { font-size: 12px; color: var(--muted); margin-top: 3px }
 .match-cc-date { font-size: 11px; color: var(--muted) }
@@ -788,7 +788,7 @@ td {
 .score-low { background: rgba(248,113,113,.1); color: var(--red); border: 2px solid rgba(248,113,113,.22) }
 
 .match-info { flex: 1; min-width: 0 }
-.match-supplier { font-size: 13px; font-weight: 600; color: #fff; letter-spacing: -.01em }
+.match-supplier { font-size: 13px; font-weight: 600; color: var(--txt); letter-spacing: -.01em }
 .match-detail { font-size: 11px; color: var(--muted); margin-top: 3px }
 .match-rate-update { font-size: 11px; color: var(--blue); margin-top: 4px; font-weight: 600 }
 .match-actions { display: flex; gap: 6px; flex-shrink: 0 }
@@ -807,7 +807,7 @@ td {
 }
 .scan-bar-left { display: flex; align-items: center; gap: 16px }
 .scan-bar-icon { font-size: 30px }
-.scan-bar-title { font-size: 14px; font-weight: 700; color: #fff; letter-spacing: -.02em }
+.scan-bar-title { font-size: 14px; font-weight: 700; color: var(--txt); letter-spacing: -.02em }
 .scan-bar-path {
   font-size: 11px;
   color: var(--muted);
@@ -857,7 +857,7 @@ td {
 }
 .dash-stat-card:hover { border-color: rgba(255,255,255,.12) }
 
-.dash-stat-val { font-size: 24px; font-weight: 800; color: #fff; letter-spacing: -.03em }
+.dash-stat-val { font-size: 24px; font-weight: 800; color: var(--txt); letter-spacing: -.03em }
 .dash-stat-label {
   font-size: 11px; color: var(--muted); font-weight: 600;
   text-transform: uppercase; letter-spacing: .5px; margin-top: 3px;
@@ -877,7 +877,7 @@ td {
 }
 .dash-card:hover { border-color: rgba(255,255,255,.12) }
 .dash-card-title {
-  font-size: 13px; font-weight: 700; color: #fff;
+  font-size: 13px; font-weight: 700; color: var(--txt);
   margin-bottom: 16px; letter-spacing: -.01em;
 }
 .dash-chart-wrap { position: relative; height: 300px }
@@ -916,7 +916,7 @@ td {
   margin-bottom: 14px;
   animation: pop .15s ease;
 }
-.sel-info { display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: 600; color: #fff }
+.sel-info { display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: 600; color: var(--txt) }
 .sel-divider { color: var(--bdr) }
 .sel-actions { display: flex; gap: 8px }
 
