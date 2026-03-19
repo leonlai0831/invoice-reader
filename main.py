@@ -593,7 +593,6 @@ def cc_parse():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
 
-# [REMOVED] /api/cc/match — Reconcile auto-matching removed
 
 @app.route("/api/cc/cross-reference", methods=["POST"])
 def cc_cross_reference():
@@ -1066,10 +1065,6 @@ def delete_ledger_transaction(txn_id):
 
 # ── CC Session Persistence ──────────────────────────────────────
 
-# [REMOVED] GET /api/cc/session — Reconcile session removed
-
-
-# [REMOVED] POST /api/cc/session — Reconcile session removed
 
 
 # ── Launch ───────────────────────────────────────────────────────

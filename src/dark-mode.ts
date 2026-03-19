@@ -10,9 +10,9 @@ export function getPreferredTheme(): Theme {
   return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
 }
 
-export function setTheme(theme: Theme): void {
+export function setTheme(theme: Theme, persist = true): void {
   document.documentElement.setAttribute('data-theme', theme);
-  localStorage.setItem(THEME_KEY, theme);
+  if (persist) localStorage.setItem(THEME_KEY, theme);
   updateToggleIcon(theme);
 }
 
@@ -27,13 +27,14 @@ function updateToggleIcon(theme: Theme): void {
 }
 
 export function initDarkMode(): void {
+  const stored = localStorage.getItem(THEME_KEY);
   const theme = getPreferredTheme();
-  setTheme(theme);
+  setTheme(theme, !!stored);  // only persist if user previously chose manually
 
-  // Listen for system theme changes
+  // Listen for system theme changes (only when user hasn't manually chosen)
   window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
     if (!localStorage.getItem(THEME_KEY)) {
-      setTheme(e.matches ? 'light' : 'dark');
+      setTheme(e.matches ? 'light' : 'dark', false);
     }
   });
 }
