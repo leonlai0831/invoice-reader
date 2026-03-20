@@ -6,6 +6,11 @@
 @font-face { font-family: 'Outfit'; font-style: normal; font-weight: 700; font-display: swap; src: url('fonts/Outfit-700.ttf') format('truetype'); }
 @font-face { font-family: 'Outfit'; font-style: normal; font-weight: 800; font-display: swap; src: url('fonts/Outfit-800.ttf') format('truetype'); }
 
+/* Geist Mono — bundled locally for tabular financial data */
+@font-face { font-family: 'Geist Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('fonts/GeistMono-Regular.ttf') format('truetype'); }
+@font-face { font-family: 'Geist Mono'; font-style: normal; font-weight: 500; font-display: swap; src: url('fonts/GeistMono-Medium.ttf') format('truetype'); }
+@font-face { font-family: 'Geist Mono'; font-style: normal; font-weight: 600; font-display: swap; src: url('fonts/GeistMono-SemiBold.ttf') format('truetype'); }
+
 :root {
   --bg: #0b0d14;
   --surf: rgba(255,255,255,.03);
@@ -235,7 +240,7 @@ tr:hover td { background: rgba(255,255,255,.04) !important }
   justify-content: center;
 }
 
-.rate-item { display: flex; align-items: center; gap: 6px }
+.rate-item { display: flex; align-items: center; gap: 6px; font-family: 'Geist Mono', monospace; font-feature-settings: "tnum"; font-size: 11px }
 
 .hdr-actions {
   display: flex;
@@ -466,7 +471,7 @@ td {
   vertical-align: middle;
 }
 
-.amt-input { text-align: right; color: var(--green) }
+.amt-input { text-align: right; color: var(--green); font-family: "Geist Mono", monospace; font-feature-settings: "tnum"; font-size: 12px }
 
 .del-btn {
   background: none;
@@ -625,7 +630,7 @@ td {
   margin-bottom: 12px;
 }
 .rate-row { display: flex; gap: 16px 22px; flex-wrap: wrap }
-.rate-item-lg { display: flex; align-items: center; gap: 8px }
+.rate-item-lg { display: flex; align-items: center; gap: 8px; font-family: 'Geist Mono', monospace; font-feature-settings: "tnum" }
 
 /* ── Empty State ────────────────────────────────────────────── */
 .empty { text-align: center; padding: 80px 0; color: var(--muted) }
@@ -817,7 +822,7 @@ td {
   font-size: 11px;
   color: var(--muted);
   margin-top: 3px;
-  font-family: 'Courier New', monospace;
+  font-family: 'Geist Mono', monospace;
   max-width: 500px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1322,6 +1327,7 @@ tr.row-selected td { background: rgba(99,102,241,.04) !important }
   border-bottom: 1px solid var(--bdr);
 }
 .ledger-txn-table td { padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,.04) }
+.ledger-txn-table td[style*="text-align:right"] { font-family: 'Geist Mono', monospace; font-feature-settings: "tnum"; font-size: 12px }
 .ledger-txn-table tbody tr:hover { background: rgba(255,255,255,.03) }
 
 
