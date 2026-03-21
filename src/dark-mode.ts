@@ -73,10 +73,10 @@ export function createThemeToggle(): void {
   btn.title = '切换亮/暗色模式';
   btn.addEventListener('click', toggleTheme);
 
-  // Insert before settings button
-  const settingsBtn = actions.querySelector('[onclick*="showModal"], [data-action="settings"]') || actions.firstChild;
-  if (settingsBtn) actions.insertBefore(btn, settingsBtn);
-  else actions.appendChild(btn);
+  // Insert before settings button (must be a direct child of actions)
+  const settingsBtn = actions.querySelector(':scope > [onclick*="showModal"], :scope > [data-action="settings"]') || actions.firstChild;
+  if (settingsBtn && settingsBtn.parentNode === actions) actions.insertBefore(btn, settingsBtn);
+  else actions.prepend(btn);
 
   updateToggleIcon(getPreferredTheme());
 }

@@ -271,4 +271,8 @@ async function init(): Promise<void> {
   }
 }
 
-document.addEventListener("DOMContentLoaded", init);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => init().catch(console.error));
+} else {
+  init().catch(console.error);
+}
