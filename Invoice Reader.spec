@@ -39,7 +39,7 @@ a = Analysis(
         'xmlrpc', 'email',
         'multiprocessing', 'concurrent',
         'lib2to3', 'ensurepip', 'venv',
-        'distutils', 'setuptools', 'pip',
+        'pip',
         'sqlite3',
     ],
     noarchive=False,
