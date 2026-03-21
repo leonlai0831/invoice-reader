@@ -1,6 +1,6 @@
 import * as state from './state';
 import * as api from './api';
-import { esc, showToast, showConfirm } from './utils';
+import { esc, showToast, showConfirm, parseAmt } from './utils';
 import { renderTable, updateCounts, buildBranchHistoryMap } from './records';
 import { scheduleSave } from './upload';
 import { switchTab } from './main-helpers';
@@ -49,10 +49,7 @@ export function renderArchive(): void {
   if (countEl) countEl.textContent = `共 ${state.archivedClaims.length} 次归档`;
 
   container.innerHTML = filtered.slice().reverse().map(claim => {
-    const total = claim.rows.reduce((s, r) => {
-      const n = parseFloat(String(r.amount || 0).replace(/[^0-9.]/g, ''));
-      return s + (isNaN(n) ? 0 : n);
-    }, 0);
+    const total = claim.rows.reduce((s, r) => s + parseAmt(r), 0);
 
     return `<div class="archive-claim-card">
       <div class="archive-claim-header">
@@ -93,6 +90,7 @@ export async function exportExcel(): Promise<void> {
     a.download = `Claim_Master_Sheet_${new Date().toISOString().slice(0, 10)}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
+    showToast('Excel 已成功导出', 'success');
   } catch (e: any) { showToast('导出错误: ' + e.message, 'error'); }
 }
 
@@ -112,27 +110,36 @@ export async function completeClaim(): Promise<void> {
     const errs: string[] = [];
     if (!r.branch) errs.push('Branch');
     if (!(r.supplierName || '').trim()) errs.push('Supplier');
-    const amt = parseFloat(String(r.amount || 0).replace(/[^0-9.]/g, ''));
+    const amt = parseAmt(r);
     if (isNaN(amt) || amt <= 0) errs.push('Amount');
     if (errs.length) missing.push({ supplier: r.supplierName || `第${i + 1}行`, errors: errs });
   });
   if (missing.length > 0) {
-    showToast('有 ' + missing.length + ' 条记录信息不完整，请补全后再提交', 'error', 6000);
+    const fieldNames = missing.slice(0, 3).map(m => `${m.supplier}: 缺少 ${m.errors.join(', ')}`).join('; ');
+    const moreText = missing.length > 3 ? ` 等 ${missing.length} 条` : '';
+    showToast(`有 ${missing.length} 条记录信息不完整${moreText}，请补全后再提交`, 'error', 8000);
+
+    // Add persistent error class (removed when field is edited)
+    let firstErrorEl: Element | null = null;
     missing.forEach(m => {
       const row = claimRows.find(r => (r.supplierName || `第${claimRows.indexOf(r) + 1}行`) === m.supplier);
       if (row) {
         const el = document.querySelector(`tr[data-id="${row.id}"]`);
-        if (el) el.classList.add('row-flash-error');
-        setTimeout(() => { if (el) el.classList.remove('row-flash-error'); }, 2500);
+        if (el) {
+          el.classList.add('row-validation-error');
+          if (!firstErrorEl) firstErrorEl = el;
+        }
       }
     });
+
+    // Scroll to the first error row
+    if (firstErrorEl) {
+      (firstErrorEl as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
     return;
   }
 
-  const claimTotal = claimRows.reduce((s, r) => {
-    const n = parseFloat(String(r.amount || 0).replace(/[^0-9.]/g, ''));
-    return s + (isNaN(n) ? 0 : n);
-  }, 0);
+  const claimTotal = claimRows.reduce((s, r) => s + parseAmt(r), 0);
   const totalStr = 'RM ' + claimTotal.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const msg = isPartial

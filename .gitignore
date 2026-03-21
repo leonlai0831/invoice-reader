@@ -3,9 +3,14 @@ dist/
 __pycache__/
 *.pyc
 build/
-*.spec
+# *.spec  # keep Invoice Reader.spec in version control
 .env
 NUL
 desktop.ini
 static/dist/
 .gstack/
+
+# Sensitive config (contains API key)
+.invoice_reader.json
+*.invoice_reader.json.tmp
+*.invoice_reader.json.bak

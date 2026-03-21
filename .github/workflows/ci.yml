@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install Python dependencies
+        run: pip install -r requirements-lock.txt
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Run Python tests
+        run: pytest tests/ -v
+
+      - name: Run frontend tests
+        run: npm run test:run
+
+  build-exe:
+    needs: test
+    runs-on: windows-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-lock.txt
+          npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build exe
+        run: pyinstaller --clean --noconfirm "Invoice Reader.spec"
+
+      - name: Read version
+        id: version
+        run: |
+          $v = Get-Content VERSION -Raw
+          echo "version=$($v.Trim())" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Invoice-Reader-v${{ steps.version.outputs.version }}
+          path: dist/Invoice Reader.exe
+          retention-days: 30

@@ -17,19 +17,41 @@ export function setTheme(theme: Theme, persist = true): void {
 }
 
 export function toggleTheme(): void {
-  const current = document.documentElement.getAttribute('data-theme') as Theme || 'dark';
-  setTheme(current === 'dark' ? 'light' : 'dark');
+  const stored = localStorage.getItem(THEME_KEY);
+  if (stored === 'dark') {
+    setTheme('light');
+  } else if (stored === 'light') {
+    // Switch to system mode
+    localStorage.removeItem(THEME_KEY);
+    const systemTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    setTheme(systemTheme, false);
+    updateToggleIcon('system');
+  } else {
+    // Currently system -> switch to dark
+    setTheme('dark');
+  }
 }
 
-function updateToggleIcon(theme: Theme): void {
+function updateToggleIcon(theme: Theme | 'system'): void {
   const btn = document.getElementById('theme-toggle');
-  if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+  if (!btn) return;
+  if (theme === 'system') {
+    btn.textContent = '💻';
+    btn.title = '跟随系统 — 点击切换到深色';
+  } else if (theme === 'dark') {
+    btn.textContent = '☀️';
+    btn.title = '深色模式 — 点击切换到浅色';
+  } else {
+    btn.textContent = '🌙';
+    btn.title = '浅色模式 — 点击跟随系统';
+  }
 }
 
 export function initDarkMode(): void {
   const stored = localStorage.getItem(THEME_KEY);
   const theme = getPreferredTheme();
   setTheme(theme, !!stored);  // only persist if user previously chose manually
+  if (!stored) updateToggleIcon('system');
 
   // Listen for system theme changes (only when user hasn't manually chosen)
   window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {

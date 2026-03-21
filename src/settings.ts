@@ -26,8 +26,15 @@ export async function saveSettings(): Promise<void> {
   try {
     const key = (document.getElementById('api-key-input') as HTMLInputElement)?.value.trim();
     if (key) {
+      // Validate API key format before saving
+      if (!key.startsWith('sk-ant-')) {
+        showToast('API Key 格式无效，应以 sk-ant- 开头', 'warning');
+        return;
+      }
+      showToast('正在验证 API Key...', 'info', 2000);
       const r = await api.saveConfig({ api_key: key });
-      if (!r.ok) showToast('保存 API Key 失败', 'error');
+      if (!r.ok) { showToast('保存 API Key 失败', 'error'); return; }
+      showToast('API Key 已保存', 'success');
     }
     await saveBranchAddresses();
     closeModal();
@@ -44,7 +51,7 @@ async function loadPortableStatus(): Promise<void> {
     if (tog) tog.checked = state.portableMode;
     const lbl = document.getElementById('portable-label');
     if (lbl) lbl.textContent = state.portableMode ? '已开启 — 配置存储在 exe 目录' : '关闭';
-  } catch { }
+  } catch (e) { console.error('loadPortableStatus error:', e); }
 }
 
 export async function togglePortableMode(enabled: boolean): Promise<void> {
@@ -72,7 +79,10 @@ export async function loadFolderSetting(): Promise<void> {
     if (scanPath) scanPath.textContent = state.claimsFolder ? state.claimsFolder + '\\New Claim' : '未设置路径 — 请先在设置中选择文件夹';
     const st = document.getElementById('folder-status');
     if (st) st.textContent = state.claimsFolder ? '✅ 已设置' : '';
-  } catch { }
+  } catch (e) {
+    console.error('loadFolderSetting error:', e);
+    showToast('加载文件夹设置失败，请检查网络连接', 'error');
+  }
 }
 
 export async function browseFolderPicker(): Promise<void> {
@@ -96,7 +106,10 @@ export async function loadRates(): Promise<void> {
   try {
     const d = await api.getRates();
     if (d.ok) { state.setRates(d.rates); state.setRatesLive(d.live); }
-  } catch { }
+  } catch (e) {
+    console.error('loadRates error:', e);
+    showToast('汇率加载失败，使用估算汇率', 'warning');
+  }
   renderRates();
 }
 
@@ -139,7 +152,15 @@ export async function loadMemory(): Promise<void> {
 export async function checkApiKey(): Promise<void> {
   try {
     const d = await api.getConfig();
-    if (!d.has_key) setTimeout(showModal, 600);
+    if (!d.has_key) {
+      // Show onboarding for first-time users
+      const onboarding = document.getElementById('onboarding-overlay');
+      if (onboarding) {
+        onboarding.style.display = 'flex';
+      } else {
+        setTimeout(showModal, 600);
+      }
+    }
   } catch (e) { console.warn('checkApiKey failed:', e); }
 }
 

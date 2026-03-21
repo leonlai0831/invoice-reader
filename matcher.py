@@ -924,6 +924,12 @@ def _parse_amount(s):
     if cleaned.count(".") > 1:
         parts = cleaned.rsplit(".", 1)
         cleaned = parts[0].replace(".", "") + "." + parts[1]
+    elif cleaned.count(".") == 1:
+        # Ambiguous: "1.234" could be 1.234 or 1234 (European thousands dot)
+        # Treat dot as thousands separator if followed by exactly 3 digits
+        integer_part, decimal_part = cleaned.lstrip("-").split(".")
+        if len(decimal_part) == 3 and integer_part and integer_part != "0":
+            cleaned = cleaned.replace(".", "")
     try:
         return abs(float(cleaned))
     except (ValueError, TypeError):

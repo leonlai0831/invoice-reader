@@ -57,6 +57,8 @@ function handleKeyDown(e: KeyboardEvent): void {
     if (sp?.classList.contains('show')) { sp.classList.remove('show'); return; }
     const im = document.getElementById('img-modal');
     if (im?.classList.contains('show')) { im.classList.remove('show'); return; }
+    const ob = document.getElementById('onboarding-overlay');
+    if (ob && ob.style.display === 'flex') { ob.style.display = 'none'; return; }
     return;
   }
 
@@ -157,7 +159,14 @@ export function createShortcutBar(): void {
     <span>·</span>
     <span>Ctrl+S 保存</span>
     <span>·</span>
-    <span>? 快捷键</span>
+    <span>Enter ↓ 下一行</span>
+    <span>·</span>
+    <span class="shortcut-help-hint" style="cursor:pointer" onclick="document.dispatchEvent(new KeyboardEvent('keydown',{key:'?'}))">⌨ 快捷键</span>
   `;
   document.body.appendChild(bar);
+  // Briefly highlight on first visit
+  if (!localStorage.getItem('shortcut-bar-seen')) {
+    bar.classList.add('shortcut-bar-highlight');
+    setTimeout(() => { bar.classList.remove('shortcut-bar-highlight'); localStorage.setItem('shortcut-bar-seen', '1'); }, 4000);
+  }
 }

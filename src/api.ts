@@ -1,8 +1,16 @@
+import type { InvoiceRow, CCTransaction, ArchivedClaim, ProcessInvoiceResponse, CCParseResponse, MergeLedgerResponse, SaveResponse, CompleteClaimResponse } from './types';
+
 // ── API Layer ────────────────────────────────────────────────────
 // All fetch calls to the Flask backend are centralized here.
 
 export async function fetchJson<T = any>(url: string, options?: RequestInit): Promise<T> {
-  const r = await fetch(url, options);
+  const opts = { ...options, headers: { ...Object.fromEntries(new Headers(options?.headers).entries()), 'X-Requested-With': 'InvoiceReader' } };
+  const r = await fetch(url, opts);
+  if (!r.ok) {
+    let msg = `HTTP ${r.status}`;
+    try { const d = await r.json(); msg = d.error || msg; } catch {}
+    throw new Error(msg);
+  }
   return r.json() as Promise<T>;
 }
 
@@ -33,11 +41,11 @@ export const getHistoricalRates = (start: string, end: string, base = 'CNY', tar
   fetchJson<{ ok: boolean; rates: Record<string, number>; error?: string }>(`/api/rates/history?start=${start}&end=${end}&base=${base}&target=${target}`);
 
 // Data
-export const getData = () => fetchJson<{ ok: boolean; rows: any[]; needsFolder?: boolean; error?: string }>('/api/data');
-export const saveData = (rows: any[]) => postJson('/api/data', { rows });
+export const getData = () => fetchJson<{ ok: boolean; rows: InvoiceRow[]; needsFolder?: boolean; error?: string }>('/api/data');
+export const saveData = (rows: InvoiceRow[]) => postJson<SaveResponse>('/api/data', { rows });
 
 // Process
-export async function processInvoice(file: File): Promise<any> {
+export async function processInvoice(file: File): Promise<ProcessInvoiceResponse> {
   const fd = new FormData();
   fd.append('file', file);
   return fetchJson('/api/process', { method: 'POST', body: fd });
@@ -47,27 +55,28 @@ export const processLocal = (filename: string) => postJson('/api/process-local',
 export const scanFolder = () => fetchJson<{ ok: boolean; files: Array<{ name: string; size: number }>; folder?: string; error?: string }>('/api/scan-folder', { method: 'POST' });
 
 // Export
-export async function exportExcel(rows: any[]): Promise<Blob> {
+export async function exportExcel(rows: InvoiceRow[]): Promise<Blob> {
   const r = await fetch('/api/export', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'InvoiceReader' },
     body: JSON.stringify({ rows }),
   });
   if (!r.ok) {
-    const d = await r.json();
-    throw new Error(d.error || String(r.status));
+    let msg = `HTTP ${r.status}`;
+    try { const d = await r.json(); msg = d.error || msg; } catch {}
+    throw new Error(msg);
   }
   return r.blob();
 }
 
 // Complete Claim
-export const completeClaim = (rows: any[], remainingRows: any[]) => postJson('/api/complete-claim', { rows, remainingRows });
+export const completeClaim = (rows: InvoiceRow[], remainingRows: InvoiceRow[]) => postJson<CompleteClaimResponse>('/api/complete-claim', { rows, remainingRows });
 
 // Archive
-export const getArchive = () => fetchJson<{ ok: boolean; claims: any[] }>('/api/archive');
+export const getArchive = () => fetchJson<{ ok: boolean; claims: ArchivedClaim[] }>('/api/archive');
 
 // Memory
-export const getMemory = () => fetchJson<{ ok: boolean; suppliers: any; customSuppliers: string[]; customDescriptions: Record<string, string[]> }>('/api/memory');
+export const getMemory = () => fetchJson<{ ok: boolean; suppliers: Record<string, import('./types').SupplierMemory>; customSuppliers: string[]; customDescriptions: Record<string, string[]> }>('/api/memory');
 export const rebuildMemoryApi = () => fetchJson<{ ok: boolean; rowsProcessed?: number; error?: string }>('/api/memory/rebuild', { method: 'POST' });
 export const getBranchAddresses = () => fetchJson<{ ok: boolean; branchAddresses: Record<string, string> }>('/api/memory/branches');
 export const saveBranchAddresses = (branchAddresses: Record<string, string>) => postJson('/api/memory/branches', { branchAddresses });
@@ -76,16 +85,16 @@ export const saveBranchAddresses = (branchAddresses: Record<string, string>) => 
 export const openFolder = (path: string) => postJson('/api/open-folder', { path });
 
 // CC Ledger
-export const getLedger = () => fetchJson<{ ok: boolean; cc: any[]; wx: any[]; ccCount: number; wxCount: number }>('/api/cc/ledger');
-export const mergeLedger = (transactions: any[], source: string) => postJson('/api/cc/ledger/merge', { transactions, source });
-export const saveLedgerApi = (cc: any[], wx: any[]) => postJson('/api/cc/ledger/save', { cc, wx });
+export const getLedger = () => fetchJson<{ ok: boolean; cc: CCTransaction[]; wx: CCTransaction[]; ccCount: number; wxCount: number }>('/api/cc/ledger');
+export const mergeLedger = (transactions: CCTransaction[], source: string) => postJson<MergeLedgerResponse>('/api/cc/ledger/merge', { transactions, source });
+export const saveLedgerApi = (cc: CCTransaction[], wx: CCTransaction[]) => postJson<SaveResponse>('/api/cc/ledger/save', { cc, wx });
 export const clearLedger = (source: string) => fetchJson(`/api/cc/ledger/${source}`, { method: 'DELETE' });
 export const deleteLedgerTxn = (txnId: string) => fetchJson(`/api/cc/ledger/transaction/${txnId}`, { method: 'DELETE' });
-export const crossReference = (wechatTransactions: any[], ccTransactions: any[], exchangeRate?: number) =>
+export const crossReference = (wechatTransactions: CCTransaction[], ccTransactions: CCTransaction[], exchangeRate?: number) =>
   postJson('/api/cc/cross-reference', { wechatTransactions, ccTransactions, exchangeRate });
 
 // CC Parse
-export async function parseCCFile(file: File, source: string): Promise<any> {
+export async function parseCCFile(file: File, source: string): Promise<CCParseResponse> {
   const fd = new FormData();
   fd.append('file', file);
   fd.append('source', source);

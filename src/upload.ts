@@ -2,10 +2,59 @@ import * as state from './state';
 import * as api from './api';
 import { generateId, esc, showToast, convertToMYR, todayStr, extractBaseFileName, normalizeInvNo } from './utils';
 import { BRANCHES, CATEGORIES, CUR_INFO } from './constants';
-import type { InvoiceRow, DuplicateResult } from './types';
+import type { InvoiceRow, DuplicateResult, ExtractionData } from './types';
 import { renderTable, updateCounts } from './records';
 import { switchTab } from './main-helpers';
 import { pushUndo } from './undo';
+
+// ── Blob URL Registry (for cleanup) ─────────────────────────────
+
+const blobUrls = new Set<string>();
+
+export function revokeBlobUrl(url: string): void {
+  if (url && url.startsWith('blob:')) {
+    URL.revokeObjectURL(url);
+    blobUrls.delete(url);
+  }
+}
+
+// ── InvoiceRow Factory ──────────────────────────────────────────
+
+interface BuildRowOptions {
+  preview?: string | null;
+  fileName?: string;
+  serverFilePath?: string;
+  localFilePath?: string;
+}
+
+export function buildInvoiceRow(p: ExtractionData, opts: BuildRowOptions): InvoiceRow {
+  const detCur = (p.currency || 'MYR').toUpperCase();
+  const isForeign = detCur !== 'MYR';
+  const origAmt = p.amount || '';
+  const myrAmt = isForeign ? convertToMYR(origAmt, detCur) : (parseFloat(origAmt) || 0);
+  const baseDesc = p.suggestedDescription || '';
+  const desc = (isForeign && origAmt)
+    ? `${baseDesc} (${detCur} ${parseFloat(origAmt).toFixed(2)})`
+    : baseDesc;
+
+  const memBranch = p.memoryBranchFromAddress || p.memoryBranch || '';
+  const memCategory = p.memoryCategory || p.suggestedCategory || '';
+  const memSupplier = p.memoryCanonicalSupplier || p.supplierName || '';
+
+  return {
+    id: generateId(),
+    branch: memBranch, supplierName: memSupplier, invoiceNo: p.invoiceNo || '',
+    invoiceDate: p.invoiceDate || '', category: memCategory,
+    description: desc, amount: isNaN(myrAmt) ? origAmt : myrAmt.toFixed(2),
+    originalAmount: origAmt, originalCurrency: detCur,
+    claimDate: todayStr(), preview: opts.preview || null,
+    fileName: opts.fileName || '', localFilePath: opts.localFilePath || '',
+    serverFilePath: opts.serverFilePath || '',
+    ccMatched: false, ccActualRate: null,
+    notes: '',
+    createdAt: new Date().toISOString(), modifiedAt: new Date().toISOString(),
+  };
+}
 
 // ── Duplicate Detection ─────────────────────────────────────────
 
@@ -92,7 +141,7 @@ export function cancelDup(): void {
 export function addAnyway(): void {
   document.getElementById('dup-modal')?.classList.remove('show');
   if (state.pendingRow) {
-    state.rows.unshift(state.pendingRow);
+    state.unshiftRow(state.pendingRow);
     state.setPendingRow(null);
     updateCounts();
     renderTable();
@@ -151,47 +200,32 @@ export async function processFile(file: File): Promise<void> {
   document.getElementById('loading')?.classList.add('show');
   const loadingText = document.getElementById('loading-text');
   const loadingName = document.getElementById('loading-name');
-  if (loadingText) loadingText.textContent = 'AI 正在分析发票...';
+  const loadingStage = document.getElementById('loading-stage');
+  if (loadingText) loadingText.textContent = '正在上传文件...';
   if (loadingName) loadingName.textContent = file.name;
+  if (loadingStage) loadingStage.textContent = '第 1 步 / 共 3 步';
 
   try {
+    if (loadingText) loadingText.textContent = 'AI 正在分析发票...';
+    if (loadingStage) loadingStage.textContent = '第 2 步 / 共 3 步 · 通常需要 3-5 秒';
     const d = await api.processInvoice(file);
     if (!d.ok) { showToast('提取失败: ' + d.error, 'error'); return; }
+    if (loadingText) loadingText.textContent = '正在处理结果...';
+    if (loadingStage) loadingStage.textContent = '第 3 步 / 共 3 步';
     if (d.cached) showToast('使用缓存数据，未消耗 API', 'info');
 
-    const p = d.data;
-    const detCur = (p.currency || 'MYR').toUpperCase();
-    const isForeign = detCur !== 'MYR';
-    const origAmt = p.amount || '';
-    const myrAmt = isForeign ? convertToMYR(origAmt, detCur) : (parseFloat(origAmt) || 0);
-    const baseDesc = p.suggestedDescription || '';
-    const desc = (isForeign && origAmt)
-      ? `${baseDesc} (${detCur} ${parseFloat(origAmt).toFixed(2)})`
-      : baseDesc;
-
     const preview = file.type.startsWith('image/') ? URL.createObjectURL(file) : null;
+    if (preview) blobUrls.add(preview);
 
-    const memBranch = p.memoryBranchFromAddress || p.memoryBranch || '';
-    const memCategory = p.memoryCategory || p.suggestedCategory || '';
-    const memSupplier = p.memoryCanonicalSupplier || p.supplierName || '';
-
-    const newRow: InvoiceRow = {
-      id: generateId(),
-      branch: memBranch, supplierName: memSupplier, invoiceNo: p.invoiceNo || '',
-      invoiceDate: p.invoiceDate || '', category: memCategory,
-      description: desc, amount: isNaN(myrAmt) ? origAmt : myrAmt.toFixed(2),
-      originalAmount: origAmt, originalCurrency: detCur,
-      claimDate: todayStr(), preview, fileName: file.name,
+    const newRow = buildInvoiceRow(d.data, {
+      preview, fileName: file.name,
       serverFilePath: d.serverFilePath || '', localFilePath: '',
-      ccMatched: false, ccActualRate: null,
-      notes: '',
-      createdAt: new Date().toISOString(), modifiedAt: new Date().toISOString(),
-    };
+    });
 
     const dup = findDuplicate(newRow);
     if (dup) {
       if (dup.reason === 'invoiceNo' || dup.reason === 'fileName') {
-        if (preview) URL.revokeObjectURL(preview);
+        revokeBlobUrl(preview!);
         state.setPendingRow(null);
         showDupModal(Object.assign({}, dup.row, { _source: dup.source }) as any, dup.reason);
       } else {
@@ -199,15 +233,23 @@ export async function processFile(file: File): Promise<void> {
         showDupModal(dup.row as any, 'supplierAmtDate');
       }
     } else {
-      state.rows.unshift(newRow);
+      state.unshiftRow(newRow);
       updateCounts();
       renderTable();
-      switchTab('records');
+      // Show toast with link instead of auto-switching
+      showToast('发票已添加 — 点击此处查看记录', 'success', 5000);
+      const toastEl = document.querySelector('#toast-container .toast:last-child') as HTMLElement | null;
+      if (toastEl) {
+        toastEl.style.cursor = 'pointer';
+        toastEl.addEventListener('click', () => { switchTab('records'); toastEl.remove(); });
+      }
       scheduleSave();
     }
   } catch (e: any) { showToast('错误: ' + e.message, 'error'); }
   finally { document.getElementById('loading')?.classList.remove('show'); }
 }
+
+let scanAbortController: AbortController | null = null;
 
 // ── Scan New Claim folder ────────────────────────────────────────
 
@@ -220,6 +262,12 @@ export async function scanNewClaim(): Promise<void> {
   const scanText = document.getElementById('scan-text');
 
   if (scanBtn) { scanBtn.disabled = true; scanBtn.textContent = '⏳ 扫描中...'; }
+  state.setScanCancelled(false);
+  scanAbortController = new AbortController();
+
+  // Show cancel button
+  const cancelBtn = document.getElementById('scan-cancel-btn');
+  if (cancelBtn) { cancelBtn.style.display = 'inline-flex'; }
 
   try {
     const sd = await api.scanFolder();
@@ -260,40 +308,18 @@ export async function scanNewClaim(): Promise<void> {
         if (wasCached) cachedCount++;
 
         if (pd.ok) {
-          const p = pd.data;
-          const detCur = (p.currency || 'MYR').toUpperCase();
-          const isForeign = detCur !== 'MYR';
-          const origAmt = p.amount || '';
-          const myrAmt = isForeign ? convertToMYR(origAmt, detCur) : (parseFloat(origAmt) || 0);
-          const baseDesc = p.suggestedDescription || '';
-          const desc = (isForeign && origAmt)
-            ? `${baseDesc} (${detCur} ${parseFloat(origAmt).toFixed(2)})`
-            : baseDesc;
-
           const localPath = pd.localFilePath || '';
           const isImg = /\.(jpg|jpeg|png|webp)$/i.test(file.name);
           const preview = isImg && localPath ? `/api/file/${localPath}` : null;
 
-          const memBranch = p.memoryBranchFromAddress || p.memoryBranch || '';
-          const memCategory = p.memoryCategory || p.suggestedCategory || '';
-          const memSupplier = p.memoryCanonicalSupplier || p.supplierName || '';
-
-          const newRow: InvoiceRow = {
-            id: generateId(),
-            branch: memBranch, supplierName: memSupplier, invoiceNo: p.invoiceNo || '',
-            invoiceDate: p.invoiceDate || '', category: memCategory,
-            description: desc, amount: isNaN(myrAmt) ? origAmt : myrAmt.toFixed(2),
-            originalAmount: origAmt, originalCurrency: detCur,
-            claimDate: todayStr(), preview, fileName: pd.fileName || file.name,
+          const newRow = buildInvoiceRow(pd.data, {
+            preview, fileName: pd.fileName || file.name,
             localFilePath: localPath, serverFilePath: '',
-            ccMatched: false, ccActualRate: null,
-            notes: '',
-            createdAt: new Date().toISOString(), modifiedAt: new Date().toISOString(),
-          };
+          });
 
           const dup = findDuplicate(newRow);
           if (!dup) {
-            state.rows.unshift(newRow);
+            state.unshiftRow(newRow);
             added++;
             updateCounts();
             scheduleSave();
@@ -308,7 +334,14 @@ export async function scanNewClaim(): Promise<void> {
         errors++;
       }
       processed++;
-      if (processed < files.length && !wasCached) await delay(2000);
+      if (state.scanCancelled) {
+        if (scanText) scanText.textContent = `❌ 已取消扫描 — 已处理 ${processed}/${files.length}，成功 ${added}`;
+        break;
+      }
+      if (processed < files.length && !wasCached) {
+        if (scanText) scanText.textContent = `等待 2 秒避免 API 限速... (${processed}/${files.length})`;
+        await delay(2000);
+      }
     }
 
     if (scanFill) scanFill.style.width = '100%';
@@ -326,11 +359,15 @@ export async function scanNewClaim(): Promise<void> {
       const more = skippedFiles.length > 5 ? ` 等 ${skippedFiles.length} 个` : '';
       showToast(`跳过重复文件: ${names}${more}`, 'warning', 8000);
     }
-    setTimeout(() => { if (progressDiv) progressDiv.style.display = 'none'; }, 6000);
+    // Keep summary visible — user can start another scan to dismiss
+    // (previously auto-hidden after 6 seconds)
   } catch (e: any) {
     showToast('扫描错误: ' + e.message, 'error');
   } finally {
     if (scanBtn) { scanBtn.disabled = false; scanBtn.textContent = '📂 读取 New Claim'; }
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    state.setScanCancelled(false);
+    scanAbortController = null;
   }
 }
 
@@ -344,7 +381,7 @@ export function addManualRow(): void {
     ccMatched: false, ccActualRate: null, notes: '',
     createdAt: new Date().toISOString(), modifiedAt: new Date().toISOString(),
   };
-  state.rows.unshift(newRow);
+  state.unshiftRow(newRow);
   updateCounts();
   renderTable();
   switchTab('records');
@@ -353,15 +390,38 @@ export function addManualRow(): void {
 
 // ── Save scheduling ─────────────────────────────────────────────
 
+let saveInFlight = false;
+let saveQueued = false;
+
+function doSave(): void {
+  if (saveInFlight) { saveQueued = true; return; }
+  saveInFlight = true;
+  const clean = state.rows.map(r => {
+    const copy = { ...r };
+    if (copy.preview && copy.preview.startsWith('blob:')) copy.preview = '';
+    return copy;
+  });
+  api.saveData(clean)
+    .catch(e => {
+      console.error('save error:', e);
+      showToast('数据保存失败，请检查磁盘空间', 'error', 6000);
+    })
+    .finally(() => {
+      saveInFlight = false;
+      if (saveQueued) { saveQueued = false; doSave(); }
+    });
+}
+
 export function scheduleSave(): void {
   if (!state.claimsFolder) return;
   if (state.saveTimer) clearTimeout(state.saveTimer);
-  state.setSaveTimer(setTimeout(() => {
-    const clean = state.rows.map(r => {
-      const copy = { ...r };
-      if (copy.preview && copy.preview.startsWith('blob:')) delete (copy as any).preview;
-      return copy;
-    });
-    api.saveData(clean).catch(e => console.error('save error:', e));
-  }, 500));
+  state.setSaveTimer(setTimeout(doSave, 500));
+}
+
+// ── Cancel Scan ──────────────────────────────────────────────
+
+export function cancelScan(): void {
+  state.setScanCancelled(true);
+  if (scanAbortController) scanAbortController.abort();
+  showToast('正在取消扫描...', 'warning');
 }

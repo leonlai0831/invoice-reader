@@ -4,7 +4,7 @@ import { esc, showToast, showConfirm, bankLabel, isWechatRelated } from './utils
 import { renderTable } from './records';
 import { scheduleSave } from './upload';
 import { switchTab } from './main-helpers';
-import type { CCTransaction, AutoLinkProposal } from './types';
+import type { CCTransaction, AutoLinkProposal, AutoLinkState } from './types';
 
 // ── CC Tab switching ────────────────────────────────────────────
 
@@ -507,23 +507,24 @@ export async function autoLinkWxCc(): Promise<void> {
     showToast(`未找到符合条件的匹配（日期±2天，汇率${rateStr}）`);
     return;
   }
-  const ap = proposals as typeof state.autoLinkProposals;
-  ap._rateMin = globalRateMin;
-  ap._rateMax = globalRateMax;
-  ap._rateTolerance = RATE_TOLERANCE_UP;
-  state.setAutoLinkProposals(ap);
+  state.setAutoLinkProposals({
+    proposals,
+    rateMin: globalRateMin,
+    rateMax: globalRateMax,
+    rateTolerance: RATE_TOLERANCE_UP,
+  });
   showAutoLinkReview();
 }
 
 // Auto-link review modal (simplified — uses innerHTML like original)
 function showAutoLinkReview(): void {
-  const proposals = state.autoLinkProposals;
+  const { proposals, rateTolerance, rateMin, rateMax } = state.autoLinkProposals;
   const acceptedCount = proposals.filter(p => p.accepted).length;
   // Build HTML (simplified from original but functionally identical)
   let rowsHtml = '';
   for (let i = 0; i < proposals.length; i++) {
     const p = proposals[i];
-    const rr = p.refRate; const rTol = proposals._rateTolerance || 0.02;
+    const rr = p.refRate; const rTol = rateTolerance || 0.02;
     const rateColor = p.rate >= (rr - rTol) && p.rate <= (rr + rTol) ? 'var(--blue)' : 'var(--orange)';
     rowsHtml += `<tr class="autolink-row ${p.accepted ? '' : 'autolink-rejected'}" id="autolink-row-${i}">
       <td style="width:30px;text-align:center"><input type="checkbox" ${p.accepted ? 'checked' : ''} data-autolink-idx="${i}" style="accent-color:var(--blue);width:16px;height:16px;cursor:pointer"></td>
@@ -538,7 +539,7 @@ function showAutoLinkReview(): void {
   const html = `<div style="padding:24px;max-width:100%">
     <h3 style="margin:0 0 6px;font-size:16px">🔗 一键关联预览</h3>
     <p style="margin:0 0 16px;font-size:12px;color:var(--muted)">
-      找到 <b style="color:var(--blue)">${proposals.length}</b> 组匹配（日期±2天，汇率范围 ¥1 = RM ${(proposals._rateMin || 0).toFixed(2)}-${(proposals._rateMax || 0).toFixed(2)}）。请逐条检查，取消不正确的关联。
+      找到 <b style="color:var(--blue)">${proposals.length}</b> 组匹配（日期±2天，汇率范围 ¥1 = RM ${(rateMin || 0).toFixed(2)}-${(rateMax || 0).toFixed(2)}）。请逐条检查，取消不正确的关联。
     </p>
     <div style="max-height:55vh;overflow-y:auto;border:1px solid var(--bdr);border-radius:8px">
       <table style="width:100%;border-collapse:collapse;font-size:12px">
@@ -578,8 +579,8 @@ function showAutoLinkReview(): void {
   modal.querySelector('#autolink-confirm-btn')?.addEventListener('click', confirmAutoLink);
   modal.querySelector('#autolink-all-cb')?.addEventListener('change', (e) => {
     const checked = (e.target as HTMLInputElement).checked;
-    for (let i = 0; i < state.autoLinkProposals.length; i++) {
-      state.autoLinkProposals[i].accepted = checked;
+    for (let i = 0; i < state.autoLinkProposals.proposals.length; i++) {
+      state.autoLinkProposals.proposals[i].accepted = checked;
       const row = document.getElementById('autolink-row-' + i);
       if (row) { row.className = 'autolink-row ' + (checked ? '' : 'autolink-rejected'); const cb = row.querySelector('input[type=checkbox]') as HTMLInputElement | null; if (cb) cb.checked = checked; }
     }
@@ -589,7 +590,7 @@ function showAutoLinkReview(): void {
     cb.addEventListener('change', (e) => {
       const idx = parseInt((e.target as HTMLElement).getAttribute('data-autolink-idx')!);
       const checked = (e.target as HTMLInputElement).checked;
-      state.autoLinkProposals[idx].accepted = checked;
+      state.autoLinkProposals.proposals[idx].accepted = checked;
       const row = document.getElementById('autolink-row-' + idx);
       if (row) row.className = 'autolink-row ' + (checked ? '' : 'autolink-rejected');
       updateAutoLinkCount();
@@ -598,8 +599,8 @@ function showAutoLinkReview(): void {
 }
 
 function updateAutoLinkCount(): void {
-  const accepted = state.autoLinkProposals.filter(p => p.accepted).length;
-  const total = state.autoLinkProposals.length;
+  const accepted = state.autoLinkProposals.proposals.filter(p => p.accepted).length;
+  const total = state.autoLinkProposals.proposals.length;
   const countEl = document.getElementById('autolink-count');
   if (countEl) countEl.textContent = `已选 ${accepted} / ${total} 条`;
   const btn = document.getElementById('autolink-confirm-btn');
@@ -607,7 +608,7 @@ function updateAutoLinkCount(): void {
 }
 
 function confirmAutoLink(): void {
-  const accepted = state.autoLinkProposals.filter(p => p.accepted);
+  const accepted = state.autoLinkProposals.proposals.filter(p => p.accepted);
   if (!accepted.length) { showToast('没有选择任何关联'); return; }
   for (const p of accepted) {
     const wx = state.ccLedgerWX.find(t => t.id === p.wx.id);
@@ -624,7 +625,7 @@ function confirmAutoLink(): void {
 }
 
 function closeAutoLinkReview(): void {
-  state.setAutoLinkProposals([] as any);
+  state.setAutoLinkProposals({ proposals: [] });
   document.getElementById('autolink-modal')?.classList.remove('show');
 }
 

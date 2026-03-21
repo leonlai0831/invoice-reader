@@ -2,6 +2,9 @@ import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
 export default defineConfig({
+  test: {
+    include: ['tests/**/*.test.ts'],
+  },
   root: '.',
   base: '/static/dist/',
   build: {

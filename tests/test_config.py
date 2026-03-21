@@ -54,12 +54,18 @@ class TestAtomicWriteJson:
 class TestLoadSaveCfg:
     def test_load_returns_default_when_missing(self, tmp_dir):
         missing = os.path.join(tmp_dir, "nope", "missing.json")
-        with patch("config._resolve_config_path", return_value=missing):
+        with patch("config._resolve_config_path", return_value=missing),              patch("config._keyring_get", return_value=""):
             cfg = load_cfg()
         assert cfg == {"api_key": ""}
 
     def test_save_then_load_roundtrip(self, tmp_dir):
-        with _mock_config(tmp_dir):
+        stored = {}
+        def mock_set(k):
+            stored['key'] = k
+            return True
+        def mock_get():
+            return stored.get('key', '')
+        with _mock_config(tmp_dir),              patch("config._keyring_set", side_effect=mock_set),              patch("config._keyring_get", side_effect=mock_get):
             save_cfg({"api_key": "sk-test-123"})
             cfg = load_cfg()
         assert cfg["api_key"] == "sk-test-123"

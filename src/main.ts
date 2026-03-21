@@ -12,13 +12,13 @@ import { renderTable, updateCounts, initTableEvents, buildBranchHistoryMap,
   toggleSort, toggleSelectAll, toggleSelectRow, deleteSelected,
   searchRecords, resetFilters, toggleBranchFilter, initBranchFilterDropdown,
   showBranchHistory, closeBranchPopover, toggleNotes, closeNotesModal,
-  applyBulkBranch, applyBulkCategory, applyBulkClaimDate, setAllClaimDateToday,
+  applyBulkBranch, applyBulkCategory, applyBulkDescription, applyBulkClaimDate, setAllClaimDateToday,
   updateField, updateCurrency, updateOrigAmt, deleteRow,
   validateAmountField, validateDateField,
   updateBranchFilterUI } from './records';
 import { onDragOver, onDragLeave, onDrop, handleFileSelect, processFile,
   scanNewClaim, addManualRow, scheduleSave,
-  showDupModal, cancelDup, addAnyway } from './upload';
+  showDupModal, cancelDup, addAnyway, cancelScan } from './upload';
 import { loadArchive, switchRecordTab, renderArchive, exportExcel,
   completeClaim, closeCompleteModal, openArchiveFolder } from './archive';
 import { showModal, closeModal, saveSettings, loadFolderSetting,
@@ -40,7 +40,10 @@ function switchTabImpl(tab: string): void {
   tabs.forEach(t => {
     const btn = document.getElementById("tab-" + t);
     const pane = document.getElementById("pane-" + t);
-    if (btn) btn.className = "tab" + (t === tab ? " active" : "");
+    if (btn) {
+      btn.className = "tab" + (t === tab ? " active" : "");
+      btn.setAttribute("aria-selected", t === tab ? "true" : "false");
+    }
     if (pane) pane.style.display = t === tab ? "block" : "none";
   });
   if (tab === "records") {
@@ -83,6 +86,14 @@ W.scanNewClaim = scanNewClaim;
 W.addManualRow = addManualRow;
 W.cancelDup = cancelDup;
 W.addAnyway = addAnyway;
+W.cancelScan = cancelScan;
+
+// Onboarding
+W.closeOnboarding = () => {
+  const el = document.getElementById('onboarding-overlay');
+  if (el) el.style.display = 'none';
+  showModal();
+};
 
 // Records
 W.toggleSort = toggleSort;
@@ -94,6 +105,7 @@ W.resetFilters = resetFilters;
 W.toggleBranchFilter = toggleBranchFilter;
 W.applyBulkBranch = applyBulkBranch;
 W.applyBulkCategory = applyBulkCategory;
+W.applyBulkDescription = applyBulkDescription;
 W.applyBulkClaimDate = applyBulkClaimDate;
 W.setAllClaimDateToday = setAllClaimDateToday;
 W.toggleNotes = toggleNotes;
@@ -141,6 +153,46 @@ W.startLedgerAssign = startLedgerAssign;
 W.saveLedger = saveLedger;
 W.runLedgerCrossRef = runLedgerCrossRef;
 
+// Upload details collapse (fix 6)
+W.toggleUploadDetails = () => {
+  const body = document.getElementById('upload-details-body');
+  const chevron = document.getElementById('upload-details-chevron');
+  if (!body) return;
+  const isOpen = !body.classList.contains('collapsed');
+  body.classList.toggle('collapsed', isOpen);
+  if (chevron) chevron.textContent = isOpen ? '▶' : '▼';
+  // Remember preference
+  localStorage.setItem('upload-details-collapsed', isOpen ? '1' : '0');
+};
+
+// Auto-collapse for returning users
+setTimeout(() => {
+  const wasCollapsed = localStorage.getItem('upload-details-collapsed');
+  if (wasCollapsed === '1') {
+    const body = document.getElementById('upload-details-body');
+    const chevron = document.getElementById('upload-details-chevron');
+    if (body) body.classList.add('collapsed');
+    if (chevron) chevron.textContent = '▶';
+  }
+}, 0);
+
+// Header more-menu (fix 19)
+W.toggleHeaderMore = () => {
+  const menu = document.getElementById('hdr-more-menu');
+  if (!menu) return;
+  const isOpen = menu.classList.contains('show');
+  menu.classList.toggle('show', !isOpen);
+  if (!isOpen) {
+    const close = (e: Event) => {
+      if (!menu.contains(e.target as Node) && !(e.target as HTMLElement).closest('.hdr-more-btn')) {
+        menu.classList.remove('show');
+        document.removeEventListener('click', close);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', close), 0);
+  }
+};
+
 // State access (for inline handlers that reference state directly)
 W.selectedRows = state.selectedRows;
 W.archiveSearch = "";
@@ -187,7 +239,10 @@ async function init(): Promise<void> {
       updateCounts();
       renderTable();
     }
-  } catch (e) { console.error("loadData error:", e); }
+  } catch (e) {
+    console.error('loadData error:', e);
+    showToast('加载数据失败，请检查 Claims Folder 设置', 'error');
+  }
 
   loadMemory();
   loadArchive().then(() => buildBranchHistoryMap());

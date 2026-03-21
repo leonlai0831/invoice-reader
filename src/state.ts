@@ -1,4 +1,4 @@
-import type { InvoiceRow, ArchivedClaim, CCTransaction, MemoryData, SortDirection, AutoLinkProposal } from './types';
+import type { InvoiceRow, ArchivedClaim, CCTransaction, MemoryData, SortDirection, AutoLinkState } from './types';
 
 // ── State ────────────────────────────────────────────────────────
 
@@ -9,7 +9,7 @@ export let claimsFolder = '';
 
 export let pendingRow: InvoiceRow | null = null;
 
-export let chartInstances: Record<string, any> = {};
+export let chartInstances: Record<string, { destroy(): void; update(): void }> = {};
 
 export let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -34,6 +34,7 @@ export let ccLedgerCC: CCTransaction[] = [];
 export let ccLedgerWX: CCTransaction[] = [];
 export let activeCCTab: 'cc' | 'wx' = 'cc';
 export let portableMode = false;
+export let scanCancelled = false;
 export let pendingCCAssign: { txnId: string; source: string } | null = null;
 export let pendingCrossRef: { txnId: string; source: string; description: string; amount: number } | null = null;
 
@@ -45,7 +46,7 @@ export let branchAddresses: Record<string, string> = {};
 
 export let notesTargetId: string | null = null;
 
-export let autoLinkProposals: AutoLinkProposal[] & { _rateMin?: number; _rateMax?: number; _rateTolerance?: number } = [] as any;
+export let autoLinkProposals: AutoLinkState = { proposals: [], rateMin: undefined, rateMax: undefined, rateTolerance: undefined };
 
 // ── Setters (for external modules to mutate shared state) ────────
 
@@ -68,13 +69,20 @@ export function setCcLedgerCC(val: CCTransaction[]) { ccLedgerCC = val; }
 export function setCcLedgerWX(val: CCTransaction[]) { ccLedgerWX = val; }
 export function setActiveCCTab(val: 'cc' | 'wx') { activeCCTab = val; }
 export function setPortableMode(val: boolean) { portableMode = val; }
+export function setScanCancelled(val: boolean) { scanCancelled = val; }
 export function setPendingCCAssign(val: typeof pendingCCAssign) { pendingCCAssign = val; }
 export function setPendingCrossRef(val: typeof pendingCrossRef) { pendingCrossRef = val; }
 export function setConfirmCallback(val: (() => void) | null) { confirmCallback = val; }
 export function setLastArchivePath(val: string) { lastArchivePath = val; }
 export function setBranchAddresses(val: Record<string, string>) { branchAddresses = val; }
 export function setNotesTargetId(val: string | null) { notesTargetId = val; }
-export function setAutoLinkProposals(val: typeof autoLinkProposals) { autoLinkProposals = val; }
+export function setAutoLinkProposals(val: AutoLinkState) { autoLinkProposals = val; }
+
+// ── Array mutation helpers (use instead of direct .unshift/.splice) ──
+
+export function unshiftRow(row: InvoiceRow): void { rows.unshift(row); }
+export function spliceRows(start: number, deleteCount: number, ...items: InvoiceRow[]): void { rows.splice(start, deleteCount, ...items); }
+export function pushRows(...items: InvoiceRow[]): void { rows.push(...items); }
 
 // ── Helper to get a row by ID ────────────────────────────────────
 export function getRow(id: string): InvoiceRow | undefined {

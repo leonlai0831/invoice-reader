@@ -13,7 +13,7 @@
 <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
 
 <!-- Confirm modal -->
-<div id="confirm-modal">
+<div id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
   <div class="modal-box" style="width:420px;text-align:center">
     <div id="confirm-icon" style="font-size:40px;margin-bottom:10px">⚠️</div>
     <h3 id="confirm-title" style="font-size:15px">确认操作</h3>
@@ -26,11 +26,12 @@
 </div>
 
 <!-- Loading -->
-<div id="loading">
+<div id="loading" role="alert" aria-live="assertive">
   <div class="spinner"></div>
   <div style="color:#818cf8;font-weight:700;font-size:15px" id="loading-text">AI 正在分析发票...</div>
   <div id="loading-name" style="color:var(--muted);font-size:12px;margin-top:4px"></div>
-  <div style="color:var(--muted);font-size:11px;margin-top:8px">自动识别币种并换算马币</div>
+  <div id="loading-stage" style="color:var(--acc);font-size:11px;margin-top:6px;font-weight:600"></div>
+  <div style="color:var(--muted);font-size:11px;margin-top:4px">自动识别币种并换算马币</div>
 </div>
 
 <!-- Image modal -->
@@ -149,25 +150,32 @@
     </div>
     <div class="hdr-actions">
       <span class="cnt-badge" id="row-count">0 张</span>
-      <button class="btn btn-ghost btn-sm" onclick="showModal()">⚙️ 设置</button>
-      <button class="btn btn-ghost btn-sm" onclick="addManualRow()">＋ 手动添加</button>
-      <button class="btn btn-ok btn-sm" onclick="exportExcel()" id="export-btn" disabled>📊 导出 Excel</button>
+      <div class="hdr-more-wrap">
+        <button class="btn btn-ghost btn-sm hdr-more-btn" onclick="toggleHeaderMore()" aria-label="更多操作">⋯</button>
+        <div id="hdr-more-menu" class="hdr-more-menu">
+          <button class="hdr-more-item" onclick="showModal();toggleHeaderMore()">⚙️ 设置</button>
+          <button class="hdr-more-item" onclick="addManualRow();toggleHeaderMore()">＋ 手动添加</button>
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-sm hdr-full-btn" onclick="showModal()" aria-label="打开设置">⚙️ 设置</button>
+      <button class="btn btn-ghost btn-sm hdr-full-btn" onclick="addManualRow()" aria-label="手动添加发票">＋ 手动添加</button>
+      <button class="btn btn-ok btn-sm" onclick="exportExcel()" id="export-btn" disabled aria-label="导出 Excel 文件">📊 导出 Excel</button>
     </div>
   </div>
 </header>
-<div id="rate-warning-banner" class="rate-warning-banner" style="display:none">⚠ 估算汇率</div>
+<div id="rate-warning-banner" class="rate-warning-banner" style="display:none">⚠ 当前使用估算汇率 — 实时汇率加载失败，金额换算可能不准确。导出前请确认汇率。<button class="btn btn-ghost" onclick="this.parentElement.style.display='none'" style="font-size:10px;padding:2px 8px;margin-left:8px">✕</button></div>
 
 <!-- Main -->
 <div id="main">
-  <div id="tabs">
-    <button class="tab active" id="tab-upload" onclick="switchTab('upload')">⬆️ 上传</button>
-    <button class="tab" id="tab-records" onclick="switchTab('records')">📋 记录 (<span id="tab-cnt">0</span>)</button>
-    <button class="tab" id="tab-cc" onclick="switchTab('cc')">💳 CC Statement</button>
-    <button class="tab" id="tab-dash" onclick="switchTab('dash')">📊 Dashboard</button>
+  <div id="tabs" role="tablist">
+    <button class="tab active" id="tab-upload" onclick="switchTab('upload')" role="tab" aria-selected="true" aria-controls="pane-upload">⬆️ 上传</button>
+    <button class="tab" id="tab-records" onclick="switchTab('records')" role="tab" aria-selected="false" aria-controls="pane-records">📋 记录 (<span id="tab-cnt">0</span>)</button>
+    <button class="tab" id="tab-cc" onclick="switchTab('cc')" role="tab" aria-selected="false" aria-controls="pane-cc">💳 CC Statement</button>
+    <button class="tab" id="tab-dash" onclick="switchTab('dash')" role="tab" aria-selected="false" aria-controls="pane-dash">📊 Dashboard</button>
   </div>
 
   <!-- Upload tab -->
-  <div id="pane-upload">
+  <div id="pane-upload" role="tabpanel" aria-labelledby="tab-upload">
     <!-- Scan New Claim folder -->
     <div class="scan-bar">
       <div class="scan-bar-left">
@@ -185,7 +193,10 @@
       <div class="scan-progress-bar">
         <div class="scan-progress-fill" id="scan-fill" style="width:0%"></div>
       </div>
-      <div class="scan-progress-text" id="scan-text">准备中...</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="scan-progress-text" id="scan-text" style="flex:1">准备中...</div>
+        <button class="btn btn-danger btn-sm" id="scan-cancel-btn" onclick="cancelScan()" style="display:none;padding:4px 12px;font-size:11px;white-space:nowrap">✕ 取消扫描</button>
+      </div>
     </div>
 
     <div style="text-align:center;margin:12px 0;font-size:12px;color:var(--muted)">── 或手动上传 ──</div>
@@ -198,40 +209,48 @@
       <input type="file" id="file-input" multiple accept=".jpg,.jpeg,.png,.webp,.pdf" style="display:none" onchange="handleFileSelect(this.files)">
     </div>
 
-    <div class="info-bar">
-      <div class="info-bar-title">💱 自动汇率换算（实时）</div>
-      <div class="rate-row" id="rate-detail-row">
-        <span style="color:var(--muted);font-size:12px;animation:pulse 1s infinite">加载中...</span>
-      </div>
-      <div style="margin-top:10px;font-size:11px;color:var(--muted)">
-        📝 外币发票自动在 Description 备注原价，例如：<span style="color:var(--txt);font-weight:500">"Google ads (USD 100.00)"</span>
-      </div>
-    </div>
+    <div id="upload-details" class="upload-details">
+      <button class="upload-details-toggle" onclick="toggleUploadDetails()">
+        <span id="upload-details-chevron" class="upload-details-chevron">▼</span>
+        <span>功能说明 & 汇率详情</span>
+      </button>
+      <div id="upload-details-body" class="upload-details-body">
+        <div class="info-bar">
+          <div class="info-bar-title">💱 自动汇率换算（实时）</div>
+          <div class="rate-row" id="rate-detail-row">
+            <span style="color:var(--muted);font-size:12px;animation:pulse 1s infinite">加载中...</span>
+          </div>
+          <div style="margin-top:10px;font-size:11px;color:var(--muted)">
+            📝 外币发票自动在 Description 备注原价，例如：<span style="color:var(--txt);font-weight:500">"Google ads (USD 100.00)"</span>
+          </div>
+        </div>
 
-    <div class="card-grid">
-      <div class="card"><div class="card-icon">🤖</div><div class="card-title">AI 自动识别</div><div class="card-desc">自动提取供应商、发票号、日期、金额、货币</div></div>
-      <div class="card"><div class="card-icon">💱</div><div class="card-title">实时汇率换算</div><div class="card-desc">USD/CNY/SGD/EUR/GBP 自动换算成 RM</div></div>
-      <div class="card"><div class="card-icon">📝</div><div class="card-title">原价备注</div><div class="card-desc">Description 自动加注原始币种和金额</div></div>
-      <div class="card"><div class="card-icon">📊</div><div class="card-title">导出 Excel</div><div class="card-desc">格式完全匹配 Claim Master Sheet</div></div>
-    </div>
+        <div class="card-grid">
+          <div class="card"><div class="card-icon">🤖</div><div class="card-title">AI 自动识别</div><div class="card-desc">自动提取供应商、发票号、日期、金额、货币</div></div>
+          <div class="card"><div class="card-icon">💱</div><div class="card-title">实时汇率换算</div><div class="card-desc">USD/CNY/SGD/EUR/GBP 自动换算成 RM</div></div>
+          <div class="card"><div class="card-icon">📝</div><div class="card-title">原价备注</div><div class="card-desc">Description 自动加注原始币种和金额</div></div>
+          <div class="card"><div class="card-icon">📊</div><div class="card-title">导出 Excel</div><div class="card-desc">格式完全匹配 Claim Master Sheet</div></div>
+        </div>
 
-    <div id="col-info" class="card">
-      <div style="font-size:11px;font-weight:700;color:#818cf8;text-transform:uppercase;letter-spacing:.5px">导出列结构（与 Claim Master Sheet 完全一致）</div>
-      <div class="col-chips">
-        <span class="col-chip">BRANCH</span>
-        <span class="col-chip">SUPPLIERS NAME</span>
-        <span class="col-chip">INVOICE NO.</span>
-        <span class="col-chip">INVOICE DATE</span>
-        <span class="col-chip">CATEGORY</span>
-        <span class="col-chip">DESCRIPTION</span>
-        <span class="col-chip">AMOUNT (RM)</span>
-        <span class="col-chip">CLAIM DATE</span>
+        <div id="col-info" class="card">
+          <div style="font-size:11px;font-weight:700;color:#818cf8;text-transform:uppercase;letter-spacing:.5px">导出列结构（与 Claim Master Sheet 完全一致）</div>
+          <div class="col-chips">
+            <span class="col-chip">BRANCH</span>
+            <span class="col-chip">SUPPLIERS NAME</span>
+            <span class="col-chip">INVOICE NO.</span>
+            <span class="col-chip">INVOICE DATE</span>
+            <span class="col-chip">CATEGORY</span>
+            <span class="col-chip">DESCRIPTION</span>
+            <span class="col-chip">AMOUNT (RM)</span>
+            <span class="col-chip">CLAIM DATE</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
   <!-- Records tab -->
-  <div id="pane-records" style="display:none">
+  <div id="pane-records" role="tabpanel" aria-labelledby="tab-records" style="display:none">
     <!-- Sub-tabs: Current / Archived -->
     <div class="subtabs">
       <button class="subtab active" id="subtab-current" onclick="switchRecordTab('current')">📋 当前</button>
@@ -260,9 +279,11 @@
         </select>
         <input type="text" id="search-records" placeholder="🔍 搜索..." oninput="searchRecords(this.value)" style="max-width:180px;margin-left:4px">
         <button class="btn btn-ghost btn-sm" onclick="resetFilters()">重置</button>
-        <button class="btn btn-ghost btn-sm" onclick="setAllClaimDateToday()" style="margin-left:auto">📅 今天日期</button>
-        <button class="btn btn-ok btn-sm" onclick="exportExcel()">📊 导出 Excel</button>
-        <button class="btn btn-pri btn-sm" onclick="completeClaim()" id="complete-btn">✅ Submit Claim</button>
+        <span id="stats-actions" class="stats-actions">
+          <button class="btn btn-ghost btn-sm" onclick="setAllClaimDateToday()" style="margin-left:auto">📅 今天日期</button>
+          <button class="btn btn-ok btn-sm" onclick="exportExcel()">📊 导出 Excel</button>
+          <button class="btn btn-pri btn-sm" onclick="completeClaim()" id="complete-btn">✅ Submit Claim</button>
+        </span>
       </div>
 
       <!-- Selection action bar (shown when rows are selected) -->
@@ -288,6 +309,8 @@
             <option>Telco</option><option>Welfare</option>
           </select>
           <button class="btn btn-ghost btn-sm" onclick="applyBulkCategory()" style="padding:5px 10px">应用</button>
+          <input type="text" id="bulk-description" placeholder="批量描述..." style="max-width:140px;margin-bottom:0">
+          <button class="btn btn-ghost btn-sm" onclick="applyBulkDescription()" style="padding:5px 10px">应用</button>
           <button class="btn btn-ghost btn-sm" onclick="applyBulkClaimDate()" style="padding:5px 10px">📅 今天日期</button>
           <span class="sel-divider">|</span>
           <button class="btn btn-danger btn-sm" onclick="deleteSelected()">🗑 删除选中</button>
@@ -344,7 +367,7 @@
   </div>
 
   <!-- CC Statement tab -->
-  <div id="pane-cc" style="display:none">
+  <div id="pane-cc" role="tabpanel" aria-labelledby="tab-cc" style="display:none">
     <div class="subtabs">
       <button class="subtab active" id="cc-subtab-cc" onclick="switchCCTab('cc')">💳 CC账本</button>
       <button class="subtab" id="cc-subtab-wx" onclick="switchCCTab('wx')">💬 微信账本</button>
@@ -390,7 +413,7 @@
   </div>
 
   <!-- Dashboard tab -->
-  <div id="pane-dash" style="display:none">
+  <div id="pane-dash" role="tabpanel" aria-labelledby="tab-dash" style="display:none">
     <div class="dash-controls">
       <div class="dash-date-range">
         <label>📅 日期范围:</label>
@@ -446,6 +469,34 @@
   <button class="btn btn-ghost btn-sm" onclick="cancelCCAssign()" style="margin-left:12px;font-size:11px">✕ 取消</button>
 </div>
 
+
+<!-- First-run onboarding -->
+<div id="onboarding-overlay" style="display:none">
+  <div class="modal-box" style="width:480px;text-align:center;padding:32px">
+    <div style="font-size:56px;margin-bottom:12px">🧾</div>
+    <h2 style="font-size:20px;font-weight:700;margin-bottom:8px">欢迎使用 Invoice Reader</h2>
+    <p style="color:var(--muted);font-size:13px;line-height:1.7;margin-bottom:20px">
+      自动识别发票 → 提取关键信息 → 导出 Excel<br>
+      首次使用请完成以下设置：
+    </p>
+    <div style="text-align:left;background:var(--surf2);border-radius:10px;padding:16px;margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">1</div>
+        <div><div style="font-weight:600;font-size:13px">设置 API Key</div><div style="font-size:11px;color:var(--muted)">用于 AI 发票识别（Anthropic Claude）</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">2</div>
+        <div><div style="font-weight:600;font-size:13px">选择 Claims Folder</div><div style="font-size:11px;color:var(--muted)">发票文件和数据的存储位置</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">3</div>
+        <div><div style="font-weight:600;font-size:13px">上传第一张发票</div><div style="font-size:11px;color:var(--muted)">拖入或点击上传，AI 自动提取信息</div></div>
+      </div>
+    </div>
+    <button class="btn btn-pri" onclick="closeOnboarding()" style="width:100%;padding:10px">⚙️ 开始设置</button>
+    <div style="font-size:11px;color:var(--muted);margin-top:10px">下次启动不再显示</div>
+  </div>
+</div>
 <script type="module" src="/static/dist/app.js"></script>
 </body>
 </html>

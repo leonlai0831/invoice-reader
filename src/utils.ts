@@ -1,4 +1,5 @@
 import type { ToastType, InvoiceRow } from './types';
+import { BANK_LABELS } from './constants';
 import * as state from './state';
 
 // ── ID Generation ────────────────────────────────────────────────
@@ -41,6 +42,11 @@ export function showConfirm(msg: string, onYes: () => void, title?: string, icon
   if (yesBtn) yesBtn.className = 'btn btn-sm ' + (btnClass || 'btn-pri');
   state.setConfirmCallback(onYes);
   document.getElementById('confirm-modal')?.classList.add('show');
+  // Focus the confirm button for keyboard accessibility
+  setTimeout(() => {
+    const yesBtn = document.getElementById('confirm-yes-btn');
+    if (yesBtn) yesBtn.focus();
+  }, 50);
 }
 
 export function closeConfirm(yes: boolean): void {
@@ -82,7 +88,20 @@ export function normalizeInvNo(s: string): string {
 // ── Open External Link ──────────────────────────────────────────
 
 export function openExternal(url: string): void {
-  window.open(url, '_blank');
+  // For local file URLs (e.g. /api/file/...), open in browser via backend
+  // For absolute URLs, use backend to ensure pywebview compat
+  if (url.startsWith('/api/') || url.startsWith('http')) {
+    fetch('/api/open-external', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'InvoiceReader' },
+      body: JSON.stringify({ url }),
+    }).catch(() => {
+      // Fallback to window.open if backend route doesn't exist
+      window.open(url, '_blank');
+    });
+  } else {
+    window.open(url, '_blank');
+  }
 }
 
 // ── Image Modal ─────────────────────────────────────────────────
@@ -130,13 +149,7 @@ export function parseAmt(r: InvoiceRow): number {
 
 export function bankLabel(bank: string | undefined): string {
   if (!bank) return 'CC';
-  const map: Record<string, string> = {
-    maybank: 'Maybank', mbb: 'MBB', cimb: 'CIMB', publicbank: 'Public Bank',
-    public_bank: 'Public Bank', rhb: 'RHB', hongleong: 'Hong Leong',
-    hong_leong: 'Hong Leong', ambank: 'AmBank', ocbc: 'OCBC', hsbc: 'HSBC',
-    uob: 'UOB', bsn: 'BSN', wechat_pay: 'WeChat Pay', generic: 'CC', pdf_text: 'CC',
-  };
-  return map[bank.toLowerCase()] || bank;
+  return BANK_LABELS[bank.toLowerCase()] || bank;
 }
 
 // ── WeChat Related Check ────────────────────────────────────────

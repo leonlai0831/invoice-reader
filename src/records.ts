@@ -1,12 +1,28 @@
 import * as state from './state';
 import * as api from './api';
 import { BRANCHES, CATEGORIES, CUR_INFO, SUPPLIERS, ALL_DESC, DESC_BY_CAT } from './constants';
-import { esc, showToast, showConfirm, convertToMYR, validateAmount, validateDate } from './utils';
-import type { InvoiceRow, SortDirection } from './types';
+import { esc, showToast, showConfirm, convertToMYR, validateAmount, validateDate, parseAmt, openExternal } from './utils';
+import type { InvoiceRow, SortDirection, EditableRowKey } from './types';
 import { scheduleSave } from './upload';
 import { switchTab } from './main-helpers';
 import { pushUndo } from './undo';
 import { manualAssignCC } from './cc-ledger';
+
+// ── Date Format Converters ────────────────────────────────────────
+
+function ddmmyyyyToIso(d: string): string {
+  if (!d) return '';
+  const m = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return '';
+  return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+}
+
+function isoToDdmmyyyy(d: string): string {
+  if (!d) return '';
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
 
 // ── Memory Merge ────────────────────────────────────────────────
 
@@ -26,19 +42,23 @@ export function getMergedDescriptions(category: string): string[] {
 
 // ── Row update helpers ──────────────────────────────────────────
 
-export function updateField(id: string, key: string, val: string): void {
+export function updateField(id: string, key: EditableRowKey, val: string): void {
   const row = state.getRow(id);
   if (!row) return;
-  const oldVal = (row as any)[key];
-  (row as any)[key] = val;
+  const oldVal = row[key];
+  row[key] = val;
   row.modifiedAt = new Date().toISOString();
+
+  // Clear validation error highlight when user edits a field
+  const rowEl = document.querySelector(`tr[data-id="${id}"]`);
+  if (rowEl) rowEl.classList.remove('row-validation-error');
 
   // Push undo entry
   pushUndo({
     type: 'field',
     description: `${key} → "${val}"`,
-    undo: () => { (row as any)[key] = oldVal; row.modifiedAt = new Date().toISOString(); renderTable(); scheduleSave(); },
-    redo: () => { (row as any)[key] = val; row.modifiedAt = new Date().toISOString(); renderTable(); scheduleSave(); },
+    undo: () => { row[key] = oldVal; row.modifiedAt = new Date().toISOString(); renderTable(); scheduleSave(); },
+    redo: () => { row[key] = val; row.modifiedAt = new Date().toISOString(); renderTable(); scheduleSave(); },
   });
 
   if (key === 'category') rerenderDescList(id);
@@ -125,7 +145,7 @@ export function deleteRow(id: string): void {
       pushUndo({
         type: 'delete',
         description: `删除 ${label}`,
-        undo: () => { state.rows.splice(idx, 0, row); updateCounts(); renderTable(); scheduleSave(); },
+        undo: () => { state.spliceRows(idx, 0, row); updateCounts(); renderTable(); scheduleSave(); },
         redo: () => { state.setRows(state.rows.filter(r => r.id !== id)); updateCounts(); renderTable(); scheduleSave(); },
       });
     },
@@ -158,15 +178,15 @@ function sortRows(arr: InvoiceRow[]): InvoiceRow[] {
   const col = state.sortCol;
   const dir = state.sortDir;
   return [...arr].sort((a, b) => {
-    let va: any, vb: any;
+    let va: string | number, vb: string | number;
+    const k = col as keyof InvoiceRow;
     if (col === 'amount') {
-      va = parseFloat(String((a as any).amount || 0).replace(/[^0-9.]/g, '')) || 0;
-      vb = parseFloat(String((b as any).amount || 0).replace(/[^0-9.]/g, '')) || 0;
+      va = parseAmt(a); vb = parseAmt(b);
     } else if (col === 'invoiceDate' || col === 'claimDate') {
       const parse = (s: string) => { const p = (s || '').split('/'); return p.length === 3 ? `${p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}` : s || ''; };
-      va = parse((a as any)[col]); vb = parse((b as any)[col]);
+      va = parse(String(a[k] || '')); vb = parse(String(b[k] || ''));
     } else {
-      va = ((a as any)[col] || '').toLowerCase(); vb = ((b as any)[col] || '').toLowerCase();
+      va = String(a[k] || '').toLowerCase(); vb = String(b[k] || '').toLowerCase();
     }
     let cmp = va < vb ? -1 : va > vb ? 1 : 0;
     return dir === 'desc' ? -cmp : cmp;
@@ -213,16 +233,19 @@ export function updateSelectionUI(): void {
 
   const bar = document.getElementById('selection-bar');
   if (state.selectedRows.size > 0) {
-    const selTotal = state.rows.filter(r => state.selectedRows.has(r.id)).reduce((s, r) => {
-      const n = parseFloat(String(r.amount || 0).replace(/[^0-9.]/g, '')); return s + (isNaN(n) ? 0 : n);
-    }, 0);
+    const selTotal = state.rows.filter(r => state.selectedRows.has(r.id)).reduce((s, r) => s + parseAmt(r), 0);
     const sct = document.getElementById('sel-count-text');
     const stt = document.getElementById('sel-total-text');
     if (sct) sct.textContent = `已选 ${state.selectedRows.size} 张`;
     if (stt) stt.textContent = `RM ${selTotal.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     if (bar) bar.style.display = 'flex';
+    // Hide stats bar action buttons when selection bar is visible
+    const statsActions = document.getElementById('stats-actions');
+    if (statsActions) statsActions.style.display = 'none';
   } else {
     if (bar) bar.style.display = 'none';
+    const statsActions = document.getElementById('stats-actions');
+    if (statsActions) statsActions.style.display = '';
   }
 
   document.querySelectorAll('#tbody tr').forEach(tr => {
@@ -244,7 +267,7 @@ export function deleteSelected(): void {
     pushUndo({
       type: 'bulk',
       description: `删除 ${count} 条记录`,
-      undo: () => { state.rows.push(...deletedRows); updateCounts(); renderTable(); scheduleSave(); },
+      undo: () => { state.pushRows(...deletedRows); updateCounts(); renderTable(); scheduleSave(); },
       redo: () => { state.setRows(state.rows.filter(r => !idsToDelete.has(r.id))); updateCounts(); renderTable(); scheduleSave(); },
     });
   }, '删除确认', '🗑', 'btn-danger');
@@ -474,7 +497,7 @@ export function validateDateField(id: string, field: string, el: HTMLInputElemen
   el.classList.remove('input-error');
   const row = state.getRow(id);
   if (row) {
-    (row as any)[field] = v.normalized;
+    row[field as EditableRowKey] = v.normalized;
     row.modifiedAt = new Date().toISOString();
     el.value = v.normalized;
     scheduleSave();
@@ -549,6 +572,27 @@ export function applyBulkCategory(): void {
   });
 }
 
+export function applyBulkDescription(): void {
+  const inp = document.getElementById('bulk-description') as HTMLInputElement | null;
+  const val = inp?.value.trim();
+  if (!val || !state.selectedRows.size) return;
+  const count = state.selectedRows.size;
+  const affectedRows = state.rows.filter(r => state.selectedRows.has(r.id));
+  const oldVals = affectedRows.map(r => ({ id: r.id, description: r.description }));
+
+  affectedRows.forEach(r => { r.description = val; r.modifiedAt = new Date().toISOString(); });
+  if (inp) inp.value = '';
+  renderTable(); scheduleSave();
+  showToast(`已将 ${count} 条记录的 Description 设为 "${val}"`, 'success');
+
+  pushUndo({
+    type: 'bulk',
+    description: `${count} 条 Description → ${val}`,
+    undo: () => { oldVals.forEach(o => { const r = state.getRow(o.id); if (r) r.description = o.description; }); renderTable(); scheduleSave(); },
+    redo: () => { affectedRows.forEach(r => { r.description = val; }); renderTable(); scheduleSave(); },
+  });
+}
+
 export function applyBulkClaimDate(): void {
   if (!state.selectedRows.size) return;
   const today = new Date();
@@ -600,7 +644,7 @@ export function renderTable(): void {
   }
   const sorted = sortRows(filtered);
 
-  const total = sorted.reduce((s, r) => { const n = parseFloat(String(r.amount || 0).replace(/[^0-9.]/g, '')); return s + (isNaN(n) ? 0 : n); }, 0);
+  const total = sorted.reduce((s, r) => s + parseAmt(r), 0);
   const statTotal = document.getElementById('stat-total');
   if (statTotal) statTotal.textContent = 'RM ' + total.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -642,12 +686,13 @@ export function renderTable(): void {
 
   const tbody = document.getElementById('tbody');
   if (!tbody) return;
+  const cachedSuppliers = getMergedSuppliers();
   tbody.innerHTML = sorted.map(row => {
     const isForeign = row.originalCurrency && row.originalCurrency !== 'MYR';
     const curInfo = CUR_INFO[row.originalCurrency] || CUR_INFO.MYR;
     const curColor = curInfo.color;
     const descOpts = getMergedDescriptions(row.category);
-    const mergedSuppliers = getMergedSuppliers();
+    const mergedSuppliers = cachedSuppliers;
     const rid = row.id;
     const isChecked = state.selectedRows.has(rid);
 
@@ -685,8 +730,8 @@ export function renderTable(): void {
       <td style="min-width:150px">
         <input value="${esc(row.invoiceNo)}" data-field="invoiceNo" data-row="${rid}" placeholder="INV-0001">
       </td>
-      <td style="width:106px">
-        <input value="${esc(row.invoiceDate)}" data-field="invoiceDate" data-row="${rid}" data-validate="date" placeholder="DD/MM/YYYY">
+      <td style="width:120px">
+        <input type="date" value="${ddmmyyyyToIso(row.invoiceDate)}" data-field="invoiceDate" data-row="${rid}" data-date-convert="true" style="font-size:11px">
       </td>
       <td style="width:140px">
         <select id="cat-${rid}" data-field="category" data-row="${rid}">
@@ -715,8 +760,8 @@ export function renderTable(): void {
         <input id="amt-${rid}" class="amt-input" value="${esc(row.amount)}" data-field="amount" data-row="${rid}" data-validate="amount" placeholder="0.00"
           style="text-align:right;color:var(--green)${isForeign ? ';padding-right:18px' : ''}">
       </td>
-      <td style="width:106px">
-        <input value="${esc(row.claimDate)}" data-field="claimDate" data-row="${rid}" data-validate="date" placeholder="DD/MM/YYYY">
+      <td style="width:120px">
+        <input type="date" value="${ddmmyyyyToIso(row.claimDate)}" data-field="claimDate" data-row="${rid}" data-date-convert="true" style="font-size:11px">
       </td>
       <td style="width:50px;text-align:center;white-space:nowrap">
         <button class="notes-btn ${row.notes ? 'has-notes' : ''}" data-notes="${rid}" title="${row.notes ? esc(row.notes) : '添加备注'}">📝</button>
@@ -761,7 +806,12 @@ export function initTableEvents(): void {
     const field = target.getAttribute('data-field');
     const rowId = target.getAttribute('data-row');
     if (field && rowId) {
-      updateField(rowId, field, (target as HTMLInputElement).value);
+      let val = (target as HTMLInputElement).value;
+      // Convert date picker ISO format back to DD/MM/YYYY
+      if (target.getAttribute('data-date-convert') === 'true') {
+        val = isoToDdmmyyyy(val);
+      }
+      updateField(rowId, field as EditableRowKey, val);
       return;
     }
 
@@ -793,7 +843,7 @@ export function initTableEvents(): void {
 
     // Open file
     const openUrl = target.getAttribute('data-open-url');
-    if (openUrl) { window.open(openUrl, '_blank'); return; }
+    if (openUrl) { openExternal(openUrl); return; }
 
     // Notes
     const notesId = target.getAttribute('data-notes');
@@ -817,6 +867,24 @@ export function initTableEvents(): void {
     if (assignId && state.pendingCCAssign) {
       manualAssignCC(assignId);
       return;
+    }
+  });
+
+  // Fix 14: Enter key navigation in table (next row, same column)
+  tbody.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const target = e.target as HTMLElement;
+    if (target.tagName !== 'INPUT') return;
+    e.preventDefault();
+    const tr = target.closest('tr');
+    if (!tr) return;
+    const cells = Array.from(tr.children);
+    const cellIndex = cells.findIndex(td => td.contains(target));
+    const nextTr = tr.nextElementSibling;
+    if (nextTr && cellIndex >= 0) {
+      const nextCell = nextTr.children[cellIndex];
+      const nextInput = nextCell?.querySelector('input, select') as HTMLElement | null;
+      if (nextInput) nextInput.focus();
     }
   });
 

@@ -1,3 +1,15 @@
+// ── CSRF: inject X-Requested-With header into all fetch calls ────
+const _origFetch = window.fetch;
+window.fetch = function(url, opts = {}) {
+  opts.headers = opts.headers || {};
+  if (opts.headers instanceof Headers) {
+    opts.headers.set("X-Requested-With", "InvoiceReader");
+  } else {
+    opts.headers["X-Requested-With"] = "InvoiceReader";
+  }
+  return _origFetch.call(this, url, opts);
+};
+
 // ── State ────────────────────────────────────────────────────────
 let rows = [];
 let rates = {USD:4.45,CNY:0.62,SGD:3.35,EUR:4.85,GBP:5.75,MYR:1};
